@@ -1,4 +1,4 @@
-Cache::FastMmap::CImpl version 1.07
+Cache::FastMmap::CImpl version 1.08
 ===========================
 
 The main C implementation of the cache is in mmap_cache.c.

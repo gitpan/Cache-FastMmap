@@ -28,3 +28,6 @@ Revision history for Perl extension Cache::FastMmap.
   - add ability to test integrity of cache file
   - remove dependency on perl 5.8
 
+1.08  Thu Aug 26 12:18 2004
+  - really remove dependency on perl 5.8
+
