@@ -6,8 +6,8 @@ WriteMakefile(
     'AUTHOR'        => 'Rob Mueller <cpan@robm.fastmail.fm>',
     'VERSION_FROM'  => 'CImpl.pm',
     'LIBS'          => [''],
-    'DEFINE'        => '-DDEBUG',
     'INC'           => '-I.',
     'OBJECT'        => 'CImpl.o mmap_cache.o',
-#	    'CCFLAGS'       => '-g',
+#	    'DEFINE'        => '-DDEBUG',
+#	    'CCFLAGS'       => '-g -O2',
 );

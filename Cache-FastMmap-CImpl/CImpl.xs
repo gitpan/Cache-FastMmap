@@ -19,6 +19,7 @@ fc_new()
     SV * obj_pnt, * obj;
   CODE:
     cache = mmc_new();
+
     /* Create integer which is pointer to cache object */
     obj_pnt = newSViv((IV)cache);
 
@@ -108,6 +109,7 @@ fc_close(obj)
 
   CODE:
     mmc_close(cache);
+    sv_setiv(obj, 0);
 
 
 void

@@ -3,3 +3,6 @@ Revision history for Perl extension Cache::FastMmap.
 1.00  Sat Dec 13 14:19:25 2003
 	- initial release
 
+1.01  Sat Dec 13 18:17:20 2003
+	- fix leak from improper munmap call
+

@@ -227,7 +227,7 @@ int mmc_init(mmap_cache * cache) {
   start_slots = cache->start_slots;
   ASSERT(start_slots >= 10 && start_slots <= 500);
 
-  c_size = c_num_pages * c_page_size;
+  cache->c_size = c_size = c_num_pages * c_page_size;
 
   /* Check if file exists */
   res = stat(cache->share_file, &statbuf);
@@ -263,8 +263,6 @@ int mmc_init(mmap_cache * cache) {
     return -1;
   }
 
-  cache->fh = fh;
-
   /* Map file into memory */
   mm_var = mmap(0, c_size, PROT_READ | PROT_WRITE, MAP_SHARED, fh, 0);
   if (mm_var == (void *)MAP_FAILED) {
@@ -273,6 +271,7 @@ int mmc_init(mmap_cache * cache) {
     return -1;
   }
 
+  cache->fh = fh;
   cache->mm_var = mm_var;
 
   return 0;

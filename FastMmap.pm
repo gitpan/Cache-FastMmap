@@ -179,7 +179,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -659,6 +659,7 @@ sub DESTROY {
 
   if ($Cache) {
     # The destructor calls close for us
+    $Cache = undef;
     delete $Self->{Cache};
   }
 }

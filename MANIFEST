@@ -10,8 +10,8 @@ Cache-FastMmap-CImpl/README
 Changes
 FastMmap.pm
 Makefile.PL
-MANIFEST
-META.yml			Module meta-data (added by MakeMaker)
+MANIFEST			This list of files
+META.yml
 README
 t/1.t
 t/2.t
