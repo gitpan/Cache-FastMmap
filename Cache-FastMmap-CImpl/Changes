@@ -18,3 +18,6 @@ Revision history for Perl extension Cache::FastMmap::CImpl.
 1.05  Sat Jan 31 17:24 2004
   - fix another edge case where page would get full, but never
     expunged when storing references
+
+1.06  Thu May 10 17:18 2004
+  - add multi_set and multi_get methods

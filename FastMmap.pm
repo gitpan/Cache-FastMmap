@@ -179,7 +179,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -358,14 +358,30 @@ sub new {
   my %Sizes = (k => 1024, m => 1024*1024);
   if ($cache_size = $Args{cache_size}) {
     $cache_size *= $Sizes{$1} if $cache_size =~ s/([km])$//i;
-    $num_pages = 89;
 
-    # Increase num_pages till we exceed 
-    $page_size = RoundPow2($cache_size / $num_pages);
-    while ($num_pages * $page_size <= $cache_size) {
-      $num_pages = $num_pages * 2 + 1;
+    if ($num_pages = $Args{num_pages}) {
+      $page_size = RoundPow2($cache_size / $num_pages);
+      $page_size = 4096 if $page_size < 4096;
+
+    } else {
+      $page_size = $Args{page_size} || 65536;
+      $page_size *= $Sizes{$1} if $page_size =~ s/([km])$//i;
+      $page_size = 4096 if $page_size < 4096;
+
+      # Increase num_pages till we exceed 
+      $num_pages = 89;
+      if ($num_pages * $page_size <= $cache_size) {
+        while ($num_pages * $page_size <= $cache_size) {
+          $num_pages = $num_pages * 2 + 1;
+        }
+      } else {
+        while ($num_pages * $page_size > $cache_size) {
+          $num_pages = int(($num_pages-1) / 2);
+        }
+        $num_pages = $num_pages * 2 + 1;
+      }
+
     }
-    $page_size = 4096 if $page_size < 4096;
 
   } else {
     ($num_pages, $page_size) = @Args{qw(num_pages page_size)};
@@ -594,6 +610,110 @@ sub get_keys {
   my @Details = $Cache->fc_get_keys(2);
   for (@Details) { $_->{value} = thaw($_->{value}); }
   return @Details;
+}
+
+=item I<multi_get($PageKey, [ $Key1, $Key2, ... ])>
+
+The two multi_xxx routines act a bit differently to the
+other routines. With the multi_get, you pass a separate
+PageKey value and then multiple keys. The PageKey value
+is hashed, and that page locked. Then that page is
+searched for each key. It returns a hash ref of
+Key => Value items found in that page in the cache.
+
+The main advantage of this is just a speed one, if you
+happen to need to search for a lot of items on each call.
+
+For instance, say you have users and a bunch of pieces
+of separate information for each user On a particular
+run, you need to retrieve a sub-set of that information
+for a user. You could do lots of get() calls, or you
+could use the 'username' as the page key, and just
+use one multi_get() and multi_set() call instead.
+
+A couple of things to note:
+
+=over 4
+
+=item 1.
+
+This makes multi_get()/multi_set() and get()/set()
+incompatiable. Don't mix calls to the two, because
+you won't find the data you're expecting
+
+=item 2.
+
+The writeback and callback modes of operation do
+not work with multi_get()/multi_set(). Don't attempt
+to use them together.
+
+=back
+
+=cut
+sub multi_get {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Hash value page key, lock page
+  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
+  $Cache->fc_lock($HashPage);
+
+  # For each key to find
+  my ($Keys, %KVs) = ($_[2]);
+  for (@$Keys) {
+
+    # Hash key to get slot in this page and read
+    my $FinalKey = "$_[1]-$_";
+    (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
+    my ($Val, $Flags, $Found) = $Cache->fc_read($HashSlot, $FinalKey);
+    next unless $Found;
+
+    # If not using raw values, use thaw() to turn data back into object
+    $Val = thaw($Val) unless $Self->{raw_values};
+
+    # Save to return
+    $KVs{$_} = $Val;
+  }
+
+  # Unlock page and return any found value
+  $Cache->fc_unlock();
+
+  return \%KVs;
+}
+
+=item I<multi_set($PageKey, { $Key1 => $Value1, $Key2 => $Value2, ... })>
+
+Store specified key/value pair into cache
+
+=cut
+sub multi_set {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Hash page key value, lock page
+  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
+  $Cache->fc_lock($HashPage);
+
+  # Loop over each key/value storing into this page
+  my $KVs = $_[2];
+  while (my ($Key, $Val) = each %$KVs) {
+
+    # If not using raw values, use freeze() to turn data 
+    $Val = freeze($Val) unless $Self->{raw_values};
+
+    # Get key/value len (we've got 'use bytes'), and do expunge check to
+    #  create space if needed
+    my $FinalKey = "$_[1]-$Key";
+    my $KVLen = length($FinalKey) + length($Val);
+    $Self->_expunge_page(2, 1, $KVLen);
+
+    # Now hash key and store into page
+    (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
+    $Cache->fc_write($HashSlot, $FinalKey, $Val, 0);
+  }
+
+  # Unlock page
+  $Cache->fc_unlock();
+
+  return 1;
 }
 
 =back
