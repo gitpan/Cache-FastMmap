@@ -1,0 +1,25 @@
+Cache/FastMmap::CImpl version 1.00
+===========================
+
+The main C implementation of the cache is in mmap_cache.c.
+CImpl.xs is the XS wrapper to expose it to perl.
+mmap_cache_test.c is a basic set of tests for the cache
+library. You can compile/test it with:
+
+  gcc -DDEBUG -g mmap_cache.c mmap_cache_test.c
+  ./a.out
+
+It's pretty slow because it tests the integrity of the
+entire page after each operation
+
+INSTALLATION
+
+This should automatically be installed as part of Cache::FastMmap
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2003 Rob Mueller
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+

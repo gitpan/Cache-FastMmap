@@ -1,0 +1,24 @@
+Cache-FastMmap-CImpl/Changes
+Cache-FastMmap-CImpl/CImpl.pm
+Cache-FastMmap-CImpl/CImpl.xs
+Cache-FastMmap-CImpl/Makefile.PL
+Cache-FastMmap-CImpl/mmap_cache.c
+Cache-FastMmap-CImpl/mmap_cache.h
+Cache-FastMmap-CImpl/mmap_cache_test.c
+Cache-FastMmap-CImpl/ppport.h
+Cache-FastMmap-CImpl/README
+Changes
+FastMmap.pm
+Makefile.PL
+MANIFEST
+META.yml			Module meta-data (added by MakeMaker)
+README
+t/1.t
+t/2.t
+t/3.t
+t/4.t
+t/5.t
+t/6.t
+t/7.t
+t/8.t
+t/FastMmapTest.pl
