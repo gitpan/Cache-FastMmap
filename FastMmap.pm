@@ -237,7 +237,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.08';
+our $VERSION = '1.09';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -491,12 +491,16 @@ sub new {
   return $Self;
 }
 
-=item I<get($Key)>
+=item I<get($Key, [ \%Options ])>
 
 Search cache for given Key. Returns undef if not found. If
 I<read_cb> specified and not found, calls the callback to try
 and find the value for the key, and if found (or 'cache_not_found'
-is set), stores it into the cache and returns the found value
+is set), stores it into the cache and returns the found value.
+
+I<%Options> is optional, and is used by get_and_set() to control
+the locking behaviour. For now, you should probably ignore it
+unless you read the code to understand how it works
 
 =cut
 sub get {
@@ -532,7 +536,8 @@ sub get {
   }
 
   # Unlock page and return any found value
-  $Cache->fc_unlock();
+  # Unlock is done only if we're not in the middle of a get_set() operation.
+  $Cache->fc_unlock() unless $_[2] && $_[2]->{skip_unlock};
 
   # If not using raw values, use thaw() to turn data back into object
   if (!$Self->{raw_values}) {
@@ -542,9 +547,13 @@ sub get {
   return $Val;
 }
 
-=item I<set($Key, $Value)>
+=item I<set($Key, $Value, [ \%Options ])>
 
 Store specified key/value pair into cache
+
+I<%Options> is optional, and is used by get_and_set() to control
+the locking behaviour. For now, you should probably ignore it
+unless you read the code to understand how it works
 
 =cut
 sub set {
@@ -552,7 +561,7 @@ sub set {
 
   # Hash value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+  $Cache->fc_lock($HashPage) unless $_[3] && $_[3]->{skip_lock};
 
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
@@ -578,6 +587,55 @@ sub set {
   }
 
   return $DidStore;
+}
+
+=item I<get_and_set($Key, $Sub)>
+
+Atomically retrieve and set the value of a Key.
+
+The page is locked while retrieving the $Key and is unlocked only after
+the value is set, thus guaranteeing the value does not change betwen
+the get and set operations.
+
+$Sub is a reference to a subroutine that is called to calculate the
+new value to store. $Sub gets $Key and the current value
+as parameters, and
+should return the new value to set in the cache for the given $Key.
+
+For example, to atomically increment a value in the cache, you
+can just use:
+
+  $Cache->get_and_set($Key, sub { return ++$_[1]; });
+
+The return value from this function is the new value stored back
+into the cache.
+
+Notes:
+
+=over 4
+
+=item *
+
+Do not perform any get/set operations from the callback sub, as these
+operations lock the page and you may end up with a dead lock!
+
+=item *
+
+Make sure your sub does not die/throw an exception, otherwise the
+unlocking code will be skipped. You can protect yourself by
+wrapping everything in your sub in an C<eval { }>
+
+=back
+
+=cut
+sub get_and_set {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  my $Value = $Self->get($_[1], { skip_unlock => 1 });
+  $Value = $_[2]->($_[1], $Value);
+  $Self->set($_[1], $Value, { skip_lock => 1 });
+
+  return $Value;
 }
 
 =item I<remove($Key)>
@@ -863,13 +921,14 @@ L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
 =head1 AUTHOR
 
-Rob Mueller E<lt>cpan@robm.fastmail.fmE<gt>
+Rob Mueller E<lt>L<mailto:cpan@robm.fastmail.fm>E<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003 by FastMail IP Partners
+Copyright (C) 2003-2005 by FastMail IP Partners
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
 
 =cut
+

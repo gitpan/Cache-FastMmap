@@ -16,8 +16,8 @@ ok( defined $FC );
 # Test empty cache
 ok( !defined $FC->get(''),          "empty get('')" );
 ok( !defined $FC->get(' '),         "empty get(' ')" );
-ok( !defined $FC->get(' ' x 1024,   "empty get(' ' x 1024)") );
-ok( !defined $FC->get(' ' x 65536,  "empty get(' ' x 65536)") );
+ok( !defined $FC->get(' ' x 1024),  "empty get(' ' x 1024)" );
+ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)" );
 
 # Test basic store/get on key sizes
 ok( $FC->set('', 'abc'),          "set('', 'abc')" );
@@ -88,7 +88,7 @@ is($keys{bcd}->{value}, "234", "get_keys 4");
 is($keys{cde}->{value}, "345", "get_keys 5");
 
 # Test getting key/value lists with UTF8
-$FC->set("def\x{263A}", "456\x{263A}", "get_keys set 4");
+$FC->set("def\x{263A}", "456\x{263A}");
 
 is( join(",", sort $FC->get_keys), "abc,bcd,cde,def\x{263A}", "get_keys 6");
 

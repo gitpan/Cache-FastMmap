@@ -1,26 +1,12 @@
 Revision history for Perl extension Cache::FastMmap::CImpl.
 
-1.00  Sat Dec 13 14:19 2003
-	- initial release
+1.09  Thu Feb  7 15:50 2005
+  - add get_and_set() routine to allow atomic reading and
+    writing of a cache value (thanks to Sreeji Das)
+  - fix some tests
 
-1.01  Sat Dec 13 18:17 2003
-	- fix leak from improper munmap call
-
-1.02  Sat Jan 24 17:05 2004
-  - fix edge case where page would get full, but never expunged
-
-1.03  Sun Jan 25 00:21 2004
-  - fix bad sorting when removing old cache entries
-
-1.04  Sun Jan 25 00:46 2004
-  - fix test file after new changes
-
-1.05  Sat Jan 31 17:24 2004
-  - fix another edge case where page would get full, but never
-    expunged when storing references
-
-1.06  Thu May 10 17:18 2004
-  - add multi_set and multi_get methods
+1.08  Thu Aug 26 12:18 2004
+  - really remove dependency on perl 5.8
 
 1.07  Thu Aug 19 22:18 2004
   - add extra documentation
@@ -28,6 +14,25 @@ Revision history for Perl extension Cache::FastMmap::CImpl.
   - add ability to test integrity of cache file
   - remove dependency on perl 5.8
 
-1.08  Thu Aug 26 12:18 2004
-  - really remove dependency on perl 5.8
+1.06  Thu May 10 17:18 2004
+  - add multi_set and multi_get methods
+
+1.05  Sat Jan 31 17:24 2004
+  - fix another edge case where page would get full, but never
+    expunged when storing references
+
+1.04  Sun Jan 25 00:46 2004
+  - fix test file after new changes
+
+1.03  Sun Jan 25 00:21 2004
+  - fix bad sorting when removing old cache entries
+
+1.02  Sat Jan 24 17:05 2004
+  - fix edge case where page would get full, but never expunged
+
+1.01  Sat Dec 13 18:17 2003
+	- fix leak from improper munmap call
+
+1.00  Sat Dec 13 14:19 2003
+	- initial release
 
