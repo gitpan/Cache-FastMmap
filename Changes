@@ -1,14 +1,20 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.00  Sat Dec 13 14:19:25 2003
+1.00  Sat Dec 13 14:19 2003
 	- initial release
 
-1.01  Sat Dec 13 18:17:20 2003
+1.01  Sat Dec 13 18:17 2003
 	- fix leak from improper munmap call
 
-1.02  Sat Jan 24 17:05:20 2004
+1.02  Sat Jan 24 17:05 2004
   - fix edge case where page would get full, but never expunged
 
-1.03  Sun Jan 25 00:21:30 2004
+1.03  Sun Jan 25 00:21 2004
   - fix bad sorting when removing old cache entries
 
+1.04  Sun Jan 25 00:46 2004
+  - fix test file after new changes
+
+1.05  Sat Jan 31 17:24 2004
+  - fix another edge case where page would get full, but never
+    expunged when storing references

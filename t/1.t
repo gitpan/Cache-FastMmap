@@ -3,6 +3,7 @@
 
 use Test::More tests => 52;
 BEGIN { use_ok('Cache::FastMmap') };
+use strict;
 
 #########################
 

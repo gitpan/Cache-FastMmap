@@ -1,4 +1,4 @@
-Cache::FastMmap::CImpl version 1.03
+Cache::FastMmap::CImpl version 1.05
 ===========================
 
 The main C implementation of the cache is in mmap_cache.c.
@@ -22,7 +22,7 @@ Rob Mueller <cpan@robm.fastmail.fm>
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2003 by FastMail IP Partners
+Copyright (C) 2003-2004 by FastMail IP Partners
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

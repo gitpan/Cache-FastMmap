@@ -3,6 +3,7 @@
 
 use Test::More tests => 9;
 BEGIN { use_ok('Cache::FastMmap') };
+use strict;
 
 #########################
 
@@ -55,7 +56,7 @@ ok( eq_hash(\%WrittenItems, \%BackingStore), "items match 1");
 
 # Should be able to read all items
 my $Failed = 0;
-for (keys %WrittenKeys) {
+for (keys %WrittenItems) {
   $Failed++ if $FC->get($_) ne $WrittenItems{$_};
 }
 
@@ -66,7 +67,7 @@ ok( $Failed == 0, "got all written items 1" );
 
 # Should still be able to read all items
 $Failed = 0;
-for (keys %WrittenKeys) {
+for (keys %WrittenItems) {
   $Failed++ if $FC->get($_) ne $WrittenItems{$_};
 }
 

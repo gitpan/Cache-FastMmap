@@ -9,6 +9,7 @@ if ($@) {
   plan tests => 9;
 }
 BEGIN { use_ok('Cache::FastMmap') };
+use strict;
 
 my $GTop = GTop->new;
 
@@ -121,7 +122,7 @@ sub SetLeak {
 
 sub GetLeak {
   for (1 .. 20000) {
-    $HitCount++ if $FC->get("blah" . $StartKet++. "blah");
+    $HitCount++ if $FC->get("blah" . $StartKey++. "blah");
   }
 }
 

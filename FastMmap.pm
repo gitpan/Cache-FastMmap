@@ -179,7 +179,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.03';
+our $VERSION = '1.05';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -485,7 +485,7 @@ sub set {
 
   # Get key/value len (we've got 'use bytes'), and do expunge check to
   #  create space if needed
-  my $KVLen = length($_[1]) + length($_[2]);
+  my $KVLen = length($_[1]) + length($Val);
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
