@@ -21,3 +21,10 @@ Revision history for Perl extension Cache::FastMmap.
 
 1.06  Thu May 10 17:18 2004
   - add multi_set and multi_get methods
+
+1.07  Thu Aug 19 22:18 2004
+  - add extra documentation
+  - add parameter to empty() method
+  - add ability to test integrity of cache file
+  - remove dependency on perl 5.8
+

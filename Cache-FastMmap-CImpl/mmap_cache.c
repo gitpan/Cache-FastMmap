@@ -66,6 +66,7 @@ struct mmap_cache {
   int    fh;
   char * share_file;
   int    init_file;
+  int    test_file;
   int    cache_not_found;
 
   /* Last error string */
@@ -83,7 +84,7 @@ struct mmap_cache_it {
 
 /* Internal functions */
 void _mmc_set_error(mmap_cache *, int, char *, ...);
-void _mmc_init_pages(mmap_cache *, int);
+void _mmc_init_page(mmap_cache *, MU32);
 
 MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int );
 void _mmc_delete_slot(mmap_cache * , MU32 *);
@@ -133,6 +134,7 @@ int  _mmc_dump_page(mmap_cache *);
 /* Default values for a new cache */
 char * def_share_file = "/tmp/sharefile";
 MU32    def_init_file = 0;
+MU32    def_test_file = 0;
 MU32    def_expire_time = 0;
 MU32    def_c_num_pages = 89;
 MU32    def_c_page_size = 65536;
@@ -162,6 +164,7 @@ mmap_cache * mmc_new() {
   cache->fh = 0;
   cache->share_file = def_share_file;
   cache->init_file = def_init_file;
+  cache->test_file = def_test_file;
 
   return cache;
 }
@@ -169,6 +172,8 @@ mmap_cache * mmc_new() {
 int mmc_set_param(mmap_cache * cache, char * param, char * val) {
   if (!strcmp(param, "init_file")) {
     cache->init_file = atoi(val);
+  } else if (!strcmp(param, "test_file")) {
+    cache->test_file = atoi(val);
   } else if (!strcmp(param, "page_size")) {
     cache->c_page_size = atoi(val);
   } else if (!strcmp(param, "num_pages")) {
@@ -206,8 +211,8 @@ int mmc_get_param(mmap_cache * cache, char * param) {
  * 
 */
 int mmc_init(mmap_cache * cache) {
-  int res, fh;
-  void * mm_var;
+  int i, res, fh, do_init;
+  void * mm_var, * tmp;
   MU32 c_num_pages, c_page_size, c_size, start_slots;
   struct stat statbuf;
 
@@ -243,6 +248,7 @@ int mmc_init(mmap_cache * cache) {
   }
 
   /* Create file if it doesn't exist */
+  do_init = 0;
   res = stat(cache->share_file, &statbuf);
   if (res == -1) {
     res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, 0640);
@@ -251,7 +257,21 @@ int mmc_init(mmap_cache * cache) {
       return -1;
     }
 
-    _mmc_init_pages(cache, res);
+    /* Fill file with 0's */
+    tmp = malloc(cache->c_page_size);
+    if (!tmp) {
+      _mmc_set_error(cache, errno, "Malloc of tmp space failed");
+      return -1;
+    }
+
+    memset(tmp, 0, cache->c_page_size);
+    for (i = 0; i < cache->c_num_pages; i++) {
+      write(res, tmp, cache->c_page_size);
+    }
+    free(tmp);
+
+    /* Later on initialise page structures */
+    do_init = 1;
 
     close(res);
   }
@@ -273,6 +293,59 @@ int mmc_init(mmap_cache * cache) {
 
   cache->fh = fh;
   cache->mm_var = mm_var;
+
+  /* Initialise pages if new file */
+  if (do_init) {
+    _mmc_init_page(cache, -1);
+    
+    /* Unmap and re-map to stop gtop telling us our memory usage is up */
+    res = munmap(cache->mm_var, cache->c_size);
+    if (res == -1) {
+      _mmc_set_error(cache, errno, "Munmap of shared file %s failed", cache->share_file);
+      return -1;
+    }
+
+    mm_var = mmap(0, c_size, PROT_READ | PROT_WRITE, MAP_SHARED, fh, 0);
+    if (mm_var == (void *)MAP_FAILED) {
+      close(fh);
+      _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
+      return -1;
+    }
+    cache->mm_var = mm_var;
+  }
+
+  /* Test pages in file if asked */
+  if (cache->test_file) {
+    for (i = 0; i < cache->c_num_pages; i++) {
+      int lock_page = 0, bad_page = 0;
+
+      /* Need to lock page, which tests header structure */
+      if (mmc_lock(cache, i)) {
+        bad_page = 1;
+
+      /* If lock succeeded, test page structure */
+      } else {
+        lock_page = 1;
+        if (!_mmc_test_page(cache)) {
+          bad_page = 1;
+        }
+      }
+
+      /* If we locked, unlock */
+      if (lock_page) {
+        mmc_unlock(cache);
+      }
+
+      /* A bad page, initialise it */
+      if (bad_page) {
+        _mmc_init_page(cache, i);
+        /* Rerun test on this page, potential infinite
+           loop if init_page is broken, but then things
+           are really broken anyway */
+        i--;
+      }
+    }
+  }
 
   return 0;
 }
@@ -333,19 +406,19 @@ char * mmc_error(mmap_cache * cache) {
 */
 int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   struct flock lock;
+  MU32 p_offset;
   int old_alarm, alarm_left = 10;
   int lock_res = -1;
   void * p_ptr;
 
   /* Setup page details */
-  cache->p_cur = p_cur;
-  cache->p_offset = p_cur * cache->c_page_size;
-  p_ptr = PTR_ADD(cache->mm_var, cache->p_offset);
+  p_offset = p_cur * cache->c_page_size;
+  p_ptr = PTR_ADD(cache->mm_var, p_offset);
  
   /* Setup fcntl locking structure */
   lock.l_type = F_WRLCK;
   lock.l_whence = SEEK_SET;
-  lock.l_start = cache->p_offset;
+  lock.l_start = p_offset;
   lock.l_len = cache->c_page_size;
 
   old_alarm = alarm(alarm_left);
@@ -376,16 +449,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
     return -1;
   }
 
-#ifdef DEBUG
-  /* Check page header */
-  {
-  ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
-  ASSERT(P_NumSlots(p_ptr) >= 89 && P_NumSlots(p_ptr) < cache->c_page_size);
-  ASSERT(P_FreeSlots(p_ptr) > 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
-  ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
-  ASSERT(P_FreeData(p_ptr) + P_FreeBytes(p_ptr) == cache->c_page_size);
-  }
-#endif
+  if (!(P_Magic(p_ptr) == 0x92f7e3b1)) return -1;
 
   /* Copy to cache structure */
   cache->p_num_slots = P_NumSlots(p_ptr);
@@ -394,7 +458,22 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_free_data = P_FreeData(p_ptr);
   cache->p_free_bytes = P_FreeBytes(p_ptr);
 
+  /* Reality check */
+  if (!(cache->p_num_slots >= 89 && cache->p_num_slots < cache->c_page_size)) return -1;
+  if (!(cache->p_free_slots > 0 && cache->p_free_slots <= cache->p_num_slots)) return -1;
+  if (!(cache->p_old_slots <= cache->p_free_slots)) return -1;
+  if (!(cache->p_free_data + cache->p_free_bytes == cache->c_page_size)) return -1;
+
+  /* Check page header */
+  ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
+  ASSERT(P_NumSlots(p_ptr) >= 89 && P_NumSlots(p_ptr) < cache->c_page_size);
+  ASSERT(P_FreeSlots(p_ptr) > 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
+  ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
+  ASSERT(P_FreeData(p_ptr) + P_FreeBytes(p_ptr) == cache->c_page_size);
+
   /* Setup page pointers */
+  cache->p_cur = p_cur;
+  cache->p_offset = p_cur * cache->c_page_size;
   cache->p_base = p_ptr;
   cache->p_base_slots = PTR_ADD(p_ptr, P_HEADERSIZE);
 
@@ -722,7 +801,7 @@ int mmc_calc_expunge(
     for (; slot_ptr != slot_end; slot_ptr++) {
       MU32 data_offset = *slot_ptr;
       MU32 * base_det = S_Ptr(cache->p_base, data_offset);
-      MU32 expire_time, kvlen;
+      MU32 expire_time, flags, kvlen;
 
       /* Ignore if if free slot */
       if (data_offset <= 1) {
@@ -735,8 +814,9 @@ int mmc_calc_expunge(
         continue;
       }
 
-      /* Definitely out if expired */
+      /* Definitely out if expired, and not dirty */
       expire_time = S_ExpireTime(base_det);
+      flags = S_Flags(base_det);
       if (expire_time && now >= expire_time) {
         *copy_base_det_out++ = base_det;
         continue;
@@ -1115,29 +1195,36 @@ MU32 * _mmc_find_slot(
 }
 
 /*
- * void _mmc_init_pages(mmap_cache * cache, int fh)
+ * void _mmc_init_page(mmap_cache * cache, int page)
  *
- * Initialise the file descriptor passed with empty pages
+ * Initialise the given page as empty
+ *
+ * If page == -1, init all pages
  *
 */
-void _mmc_init_pages(mmap_cache * cache, int fh) {
-  int p;
-  void * page_data = (void *)malloc(cache->c_page_size);
-  memset(page_data, 0, cache->c_page_size);
-
-  P_Magic(page_data) = 0x92f7e3b1;
-  P_NumSlots(page_data) = cache->start_slots;
-  P_FreeSlots(page_data) = cache->start_slots;
-  P_OldSlots(page_data) = 0;
-  P_FreeData(page_data) = P_HEADERSIZE + cache->start_slots * 4;
-  P_FreeBytes(page_data) = cache->c_page_size - P_FreeData(page_data);
-
-  /* Write pages */
-  for (p = 0; p < cache->c_num_pages; p++) {
-    write(fh, page_data, cache->c_page_size);
+void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
+  MU32 start_page = p_cur, end_page = p_cur+1;
+  if (p_cur == -1) {
+    start_page = 0;
+    end_page = cache->c_num_pages;
   }
 
-  free(page_data);
+  for (p_cur = start_page; p_cur < end_page; p_cur++) {
+    /* Setup page details */
+    MU32 p_offset = p_cur * cache->c_page_size;
+    void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
+
+    /* Initialise to all 0's */
+    memset(p_ptr, 0, cache->c_page_size);
+
+    /* Setup header */
+    P_Magic(p_ptr) = 0x92f7e3b1;
+    P_NumSlots(p_ptr) = cache->start_slots;
+    P_FreeSlots(p_ptr) = cache->start_slots;
+    P_OldSlots(p_ptr) = 0;
+    P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * 4;
+    P_FreeBytes(p_ptr) = cache->c_page_size - P_FreeData(p_ptr);
+  }
 }
 
 /*
@@ -1184,6 +1271,7 @@ int  _mmc_test_page(mmap_cache * cache) {
   MU32 data_size = cache->c_page_size;
 
   ASSERT(cache->p_cur != -1);
+  if (!(cache->p_cur != -1)) return 0;
 
   for (; slot_ptr < cache->p_base_slots + cache->p_num_slots; slot_ptr++) {
     MU32 data_offset = *slot_ptr;
@@ -1191,6 +1279,9 @@ int  _mmc_test_page(mmap_cache * cache) {
     ASSERT(data_offset == 0 || data_offset == 1 ||
         (data_offset >= P_HEADERSIZE + cache->p_num_slots * 4 &&
          data_offset < cache->c_page_size));
+    if (!(data_offset == 0 || data_offset == 1 ||
+        (data_offset >= P_HEADERSIZE + cache->p_num_slots * 4 &&
+         data_offset < cache->c_page_size))) return 0;
 
     if (data_offset == 1) {
       count_old++;
@@ -1211,11 +1302,16 @@ int  _mmc_test_page(mmap_cache * cache) {
       ROUNDLEN(kvlen);
 
       ASSERT(last_access > 1000000000 && last_access < 1200000000);
+      if (!(last_access > 1000000000 && last_access < 1200000000)) return 0;
       ASSERT(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1200000000));
+      if (!(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1200000000))) return 0;
 
       ASSERT(key_len >= 0 && key_len < data_size);
+      if (!(key_len >= 0 && key_len < data_size)) return 0;
       ASSERT(val_len >= 0 && val_len < data_size);
+      if (!(val_len >= 0 && val_len < data_size)) return 0;
       ASSERT(kvlen >= 4*4 && kvlen < data_size);
+      if (!(kvlen >= 4*4 && kvlen < data_size)) return 0;
 
       /* Keep track of largest end of data position */
       if (data_offset + kvlen > max_data_offset) {
@@ -1230,10 +1326,12 @@ int  _mmc_test_page(mmap_cache * cache) {
         mmc_hash(cache, S_KeyPtr(base_det), (int)key_len,
           &hash_page, &hash_slot);
         ASSERT(hash_slot == S_SlotHash(base_det));
+        if (!(hash_slot == S_SlotHash(base_det))) return 0;
 
         find_slot_ptr = _mmc_find_slot(cache, hash_slot, S_KeyPtr(base_det), key_len);
 
         ASSERT(find_slot_ptr == slot_ptr);
+        if (!(find_slot_ptr == slot_ptr)) return 0;
       }
 
     }
@@ -1241,8 +1339,11 @@ int  _mmc_test_page(mmap_cache * cache) {
   }
 
   ASSERT(count_free == cache->p_free_slots);
+  if (!(count_free == cache->p_free_slots)) return 0;
   ASSERT(count_old == cache->p_old_slots);
+  if (!(count_old == cache->p_old_slots)) return 0;
   ASSERT(cache->p_free_data >= max_data_offset);
+  if (!(cache->p_free_data >= max_data_offset)) return 0;
 
   return 1;
 }

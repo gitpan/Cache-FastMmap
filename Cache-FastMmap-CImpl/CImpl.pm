@@ -11,11 +11,11 @@ Do not use this directly. Cache::FastMmap uses this
 =cut
 
 # Modules/Export/XSLoader {{{
-use 5.008;
+use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap::CImpl', $VERSION);

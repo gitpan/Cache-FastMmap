@@ -141,8 +141,8 @@ sub WBLeak {
 
 sub ListLeak {
   for (1 .. 1000) {
-    $FC->get_keys(0);
-    $FC->get_keys(1);
-    $FC->get_keys(2);
+    my $a = [ $FC->get_keys(0) ];
+    my $b = [ $FC->get_keys(1) ];
+    my $c = [ $FC->get_keys(2) ];
   }
 }

@@ -13,6 +13,13 @@ Cache::FastMmap - Uses an mmap'ed file to act as a shared memory interprocess ca
   # Uses vaguely sane defaults
   $Cache = Cache::FastMmap->new();
 
+  # $Value must be a reference...
+  $Cache->set($Key, $Value);
+  $Value = $Cache->get($Key);
+
+  $Cache = Cache::FastMmap->new(raw_values => 1);
+
+  # $Value can't be a reference...
   $Cache->set($Key, $Value);
   $Value = $Cache->get($Key);
 
@@ -34,32 +41,38 @@ suit your situation better:
 
 =item *
 
-I<MLDBM::Sync> - acts as a database, data is not automatically
+L<MLDBM::Sync> - acts as a database, data is not automatically
 expired, slow
 
 =item *
 
-I<IPC::MM> - hash implementation is broken, data is not automatically
+L<IPC::MM> - hash implementation is broken, data is not automatically
 expired, slow
 
 =item *
 
-I<Cache::FileCache> - lots of features, slow
+L<Cache::FileCache> - lots of features, slow
 
 =item *
 
-I<Cache::SharedMemoryCache> - lots of features, VERY slow. Uses
+L<Cache::SharedMemoryCache> - lots of features, VERY slow. Uses
 IPC::ShareLite which freeze/thaws ALL data at each read/write
 
 =item *
 
-I<DBI> - use your favourite RDBMS. can perform well, need a
+L<DBI> - use your favourite RDBMS. can perform well, need a
 DB server running. very global. socket connection latency
 
 =item *
 
-I<Cache::Mmap> - similar to this module, in pure perl. slows down
+L<Cache::Mmap> - similar to this module, in pure perl. slows down
 with larger pages
+
+=item *
+
+L<BerkeleyDB> - very fast (data ends up mostly in shared memory
+cache) but acts as a database overall, so data is not automatically
+expired
 
 =back
 
@@ -74,6 +87,10 @@ Automatic expiry and space management
 =item *
 
 Very fast access to lots of small items
+
+=item *
+
+The ability to fetch/store many items in one go
 
 =back
 
@@ -95,12 +112,12 @@ the cache.
 =item *
 
 It uses a dual level hashing system (hash to find page, then hash
-within each page to find a slot) to make most I<get> calls O(1) and
+within each page to find a slot) to make most C<get()> calls O(1) and
 fast
 
 =item *
 
-On each I<set>, if there are slots and page space available, only
+On each C<set()>, if there are slots and page space available, only
 the slot has to be updated and the data written at the end of the used
 data space. If either runs out, a re-organisation of the page is
 performed to create new slots/space which is done in an efficient way
@@ -133,7 +150,7 @@ And then:
   $Cache->set($Key, $NewValue);
 
 Will just work and will be read/written to the underlying data source as
-needed automatically
+needed automatically.
 
 =head1 PERFORMANCE
 
@@ -142,8 +159,49 @@ the cache, then you're limited by the speed of the Storable module.
 If you're storing simple structures, or raw data, then
 Cache::FastMmap has noticeable performance improvements.
 
-See I<http://cpan.robm.fastmail.fm/cache_perf.html> for some
+See L<http://cpan.robm.fastmail.fm/cache_perf.html> for some
 comparisons to other modules.
+
+=head1 MEMORY SIZE
+
+Because Cache::FastMmap mmap's a shared file into your processes memory
+space, this can make each process look quite large, even though it's just
+mmap'd memory that's shared between all processes that use the cache,
+and may even be swapped out if the cache is getting low usage.
+
+However, the OS will think your process is quite large, which might
+mean you hit some BSD::Resource or 'ulimits' you set previously that you
+thought were sane, but aren't anymore, so be aware.
+
+=head1 USAGE
+
+Because the cache uses shared memory through an mmap'd file, you have
+to make sure each process connects up to the file. There's probably
+two main ways to do this:
+
+=over 4
+
+=item *
+
+Create the cache in the parent process, and then when it forks, each
+child will inherit the same file descriptor, mmap'ed memory, etc and
+just work.
+
+=item *
+
+Explicitly connect up in each forked child to the share file
+
+=back
+
+The first way is usually the easiest. If you're using the cache in a
+Net::Server based module, you'll want to open the cache in the
+C<pre_loop_hook>, because that's executed before the fork, but after
+the process ownership has changed and any chroot has been done.
+
+In mod_perl, just open the cache at the global level in the appropriate
+module, which is executed as the server is starting and before it
+starts forking children, but you'll probably want to chmod or chown
+the file to the permissions of the apache process.
 
 =head1 METHODS
 
@@ -152,7 +210,7 @@ comparisons to other modules.
 =cut
 
 # Modules/Export/XSLoader {{{
-use 5.008;
+use 5.006;
 use strict;
 use warnings;
 use bytes;
@@ -179,7 +237,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -273,7 +331,7 @@ given key
 Callback to write data to the underlying data store.
 Called as:
 
-  $write_cb->($context, $Key, $Value)
+  $write_cb->($context, $Key, $Value, $ExpiryTime)
   
 In 'write_through' mode, it's always called as soon as a I<set(...)>
 is called on the Cache::FastMmap class. In 'write_back' mode, it's
@@ -281,9 +339,10 @@ called when a value is expunged from the cache if it's been changed
 by a I<set(...)> rather than read from the underlying store with the
 I<read_cb> above.
 
-Note: Expired items do not result in the I<write_cb> being
-called if 'write_back' caching is enabled. The expired items
-are just thrown away
+Note: Expired items do result in the I<write_cb> being
+called if 'write_back' caching is enabled and the item has been
+changed. You can check the $ExpiryTime against C<time()> if you only
+want to write back values which aren't expired.
 
 Also remember that I<write_cb> may be called in a different process
 to the one that placed the data in the cache in the first place
@@ -333,6 +392,7 @@ sub new {
   my $share_file = $Self->{share_file}
     = $Args{share_file} || '/tmp/sharefile';
   my $init_file = $Args{init_file} || 0;
+  my $test_file = $Args{test_file} || 0;
 
   # Storing raw/storable values?
   my $raw_values = $Self->{raw_values} = int($Args{raw_values} || 0);
@@ -418,6 +478,7 @@ sub new {
 
   # Setup cache parameters
   $Cache->fc_set_param('init_file', $init_file);
+  $Cache->fc_set_param('test_file', $test_file);
   $Cache->fc_set_param('page_size', $page_size);
   $Cache->fc_set_param('num_pages', $num_pages);
   $Cache->fc_set_param('expire_time', $expire_time);
@@ -572,18 +633,19 @@ sub purge {
   $Self->_expunge_all(0, 0);
 }
 
-=item I<empty()>
+=item I<empty($OnlyExpired)>
 
-Empty all items from the cache.
+Empty all items from the cache, or if $OnlyExpired is
+true, only expired items.
 
 Note: If 'write_back' mode is enabled, any changed items
 are written back to the underlying store. Expired items are
-not written back to the underlying store
+written back to the underlying store as well.
 
 =cut
 sub empty {
   my $Self = shift;
-  $Self->_expunge_all(1, 1);
+  $Self->_expunge_all($_[0] ? 0 : 1, 1);
 }
 
 =item I<get_keys($Mode)>
@@ -625,7 +687,7 @@ The main advantage of this is just a speed one, if you
 happen to need to search for a lot of items on each call.
 
 For instance, say you have users and a bunch of pieces
-of separate information for each user On a particular
+of separate information for each user. On a particular
 run, you need to retrieve a sub-set of that information
 for a user. You could do lots of get() calls, or you
 could use the 'username' as the page key, and just
@@ -726,7 +788,7 @@ sub multi_set {
 
 =cut
 
-=item I<_expunge_all($Mode)>
+=item I<_expunge_all($Mode, $WB)>
 
 Expunge all items from the cache
 
@@ -765,7 +827,7 @@ sub _expunge_page {
 
   for (@WBItems) {
     next if !($_->{flags} & FC_ISDIRTY);
-    eval { $write_cb->($Self->{context}, $_->{key}, $_->{value}); };
+    eval { $write_cb->($Self->{context}, $_->{key}, $_->{value}, $_->{expire_time}); };
   }
 }
 
@@ -792,12 +854,12 @@ __END__
 
 =head1 SEE ALSO
 
-I<MLDBM::Sync>, I<IPC::MM>, I<Cache::FileCache>, I<Cache::SharedMemoryCache>,
-I<DBI>, I<Cache::Mmap>
+L<MLDBM::Sync>, L<IPC::MM>, L<Cache::FileCache>, L<Cache::SharedMemoryCache>,
+L<DBI>, L<Cache::Mmap>, L<BerkeleyDB>
 
 Latest news/details can also be found at:
 
-http://cpan.robm.fastmail.fm/cachefastmmap/
+L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
 =head1 AUTHOR
 

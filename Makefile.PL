@@ -12,5 +12,5 @@ WriteMakefile(
     'DIR'           => [
       'Cache-FastMmap-CImpl'
     ],
-#	    'OPTIMIZE' => '-g'
+#	    'OPTIMIZE' => '-g -DDEBUG',
 );
