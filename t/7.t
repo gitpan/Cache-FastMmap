@@ -78,7 +78,7 @@ for (@DelKeys) {
 %AllItems = (%BackingStore, %CacheItems);
 ok( eq_hash(\%AllItems, \%WrittenItems), "items match 2");
 
-my $Failed = 0;
+$Failed = 0;
 for (keys %WrittenItems) {
   $Failed++ if $FC->get($_) ne $WrittenItems{$_};
 }

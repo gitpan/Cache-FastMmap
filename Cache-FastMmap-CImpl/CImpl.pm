@@ -15,7 +15,7 @@ use 5.008;
 use strict;
 use warnings;
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap::CImpl', $VERSION);

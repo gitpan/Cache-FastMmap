@@ -648,7 +648,11 @@ int mmc_delete(
 }
 
 int last_access_cmp(const void * a, const void * b) {
-  return S_LastAccess(*(MU32 **)a) < S_LastAccess(*(MU32 **)b);
+  MU32 av = S_LastAccess(*(MU32 **)a);
+  MU32 bv = S_LastAccess(*(MU32 **)b);
+  if (av < bv) return -1;
+  if (av > bv) return 1;
+  return 0;
 }
 
 /*

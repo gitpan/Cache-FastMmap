@@ -9,3 +9,6 @@ Revision history for Perl extension Cache::FastMmap.
 1.02  Sat Jan 24 17:05:20 2004
   - fix edge case where page would get full, but never expunged
 
+1.03  Sun Jan 25 00:21:30 2004
+  - fix bad sorting when removing old cache entries
+
