@@ -67,6 +67,18 @@ void Set(mmap_cache * cache, void * key_ptr, int key_len, void * val_ptr, int va
   mmc_unlock(cache);
 }
 
+char * rand_str(int nchar) {
+  unsigned char * buf = (unsigned char *)malloc(nchar + 1);
+  int i;
+
+  for (i = 0; i < nchar; i++) {
+    buf[i] = (char)(rand() % 26) + 'A';
+  }
+  buf[i] = 0;
+
+  return (char *)buf;
+}
+
 char buf[65537];
 
 int BasicTests(mmap_cache * cache) {
@@ -119,6 +131,31 @@ int BasicTests(mmap_cache * cache) {
   return 0;
 }
 
+int LinearTests(mmap_cache * cache) {
+  int i, gl;
+  char * str1, * str2, * str3;
+
+  printf("Linear tests\n");
+
+  for (i = 0; i < 100000; i++) {
+    str1 = rand_str(10);
+    str2 = rand_str(10);
+
+    Set(cache, str1, strlen(str1)+1, str2, strlen(str2)+1);
+    str3 = Get(cache, str1, strlen(str1)+1, &gl);
+    ASSERT(strlen(str2)+1 == gl);
+    ASSERT(!memcmp(str2, str3, strlen(str2)+1));
+
+    free(str1);
+    free(str2);
+    free(str3);
+
+    if (i % 1000 == 0) {
+      printf("%d\n", i);
+    }
+  }
+}
+
 int EdgeTests() {
   return 0;
 }
@@ -156,18 +193,6 @@ void kl_free(key_list * kl) {
   for (i = 0; i < kl->n_keys; i++) {
     free(kl->keys[i]);
   }
-}
-
-char * rand_str(int nchar) {
-  unsigned char * buf = (unsigned char *)malloc(nchar + 1);
-  int i;
-
-  for (i = 0; i < nchar; i++) {
-    buf[i] = (char)(rand() % 26) + 'A';
-  }
-  buf[i] = 0;
-
-  return (char *)buf;
 }
 
 int urand_fh = 0;
@@ -295,6 +320,7 @@ int main(int argc, char ** argv) {
   kl = kl_new();
 
   BasicTests(cache);
+  LinearTests(cache);
 
   mmc_close(cache);
 

@@ -6,3 +6,6 @@ Revision history for Perl extension Cache::FastMmap.
 1.01  Sat Dec 13 18:17:20 2003
 	- fix leak from improper munmap call
 
+1.02  Sat Jan 24 17:05:20 2004
+  - fix edge case where page would get full, but never expunged
+

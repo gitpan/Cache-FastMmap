@@ -572,7 +572,7 @@ int mmc_write(
   ASSERT(*slot_ptr <= 1);
 
   /* If there's space, store the key/value in the data section */
-  if (cache->p_free_bytes > kvlen) {
+  if (cache->p_free_bytes >= kvlen) {
     MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
     MU32 now = (MU32)time(0);
 

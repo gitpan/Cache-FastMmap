@@ -9,5 +9,4 @@ WriteMakefile(
     'INC'           => '-I.',
     'OBJECT'        => 'CImpl.o mmap_cache.o',
 #	    'DEFINE'        => '-DDEBUG',
-#	    'CCFLAGS'       => '-g -O2',
 );
