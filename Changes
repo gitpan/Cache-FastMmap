@@ -1,5 +1,10 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.10  Web Oct 18 14:50 2006
+  - fc_lock() would segfault if no slots were available.
+    Doesn't happen in normal usage, but can happen if
+    cache behaviour altered by alternate code
+
 1.09  Thu Feb  7 15:50 2005
   - add get_and_set() routine to allow atomic reading and
     writing of a cache value (thanks to Sreeji Das)

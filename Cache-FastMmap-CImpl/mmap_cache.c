@@ -86,7 +86,7 @@ struct mmap_cache_it {
 void _mmc_set_error(mmap_cache *, int, char *, ...);
 void _mmc_init_page(mmap_cache *, MU32);
 
-MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int );
+MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
 void _mmc_delete_slot(mmap_cache * , MU32 *);
 
 int _mmc_check_expunge(mmap_cache * , int);
@@ -165,6 +165,8 @@ mmap_cache * mmc_new() {
   cache->share_file = def_share_file;
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
+
+  cache->last_error = 0;
 
   return cache;
 }
@@ -392,7 +394,9 @@ int mmc_close(mmap_cache *cache) {
 }
 
 char * mmc_error(mmap_cache * cache) {
-  return cache->last_error;
+  if (cache->last_error)
+    return cache->last_error;
+  return "Unknown error";
 }
 
 /*
@@ -459,15 +463,15 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_free_bytes = P_FreeBytes(p_ptr);
 
   /* Reality check */
-  if (!(cache->p_num_slots >= 89 && cache->p_num_slots < cache->c_page_size)) return -1;
-  if (!(cache->p_free_slots > 0 && cache->p_free_slots <= cache->p_num_slots)) return -1;
-  if (!(cache->p_old_slots <= cache->p_free_slots)) return -1;
-  if (!(cache->p_free_data + cache->p_free_bytes == cache->c_page_size)) return -1;
+  if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size) return -1;
+  if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots) return -1;
+  if (cache->p_old_slots > cache->p_free_slots) return -1;
+  if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size) return -1;
 
   /* Check page header */
   ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
   ASSERT(P_NumSlots(p_ptr) >= 89 && P_NumSlots(p_ptr) < cache->c_page_size);
-  ASSERT(P_FreeSlots(p_ptr) > 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
+  ASSERT(P_FreeSlots(p_ptr) >= 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
   ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
   ASSERT(P_FreeData(p_ptr) + P_FreeBytes(p_ptr) == cache->c_page_size);
 
@@ -574,7 +578,7 @@ int mmc_read(
   MU32 *flags
 ) {
   /* Search slots for key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len);
+  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 0);
 
   /* Did we find a value? */
   if (*slot_ptr == 0) {
@@ -636,7 +640,11 @@ int mmc_write(
   MU32 kvlen = KV_SlotLen(key_len, val_len);
 
   /* Search for slot with given key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len);
+  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
+
+  /* If all slots full, definitely can't store */
+  if (!slot_ptr)
+    return 0;
 
   ROUNDLEN(kvlen);
 
@@ -705,7 +713,11 @@ int mmc_delete(
   MU32 * flags
 ) {
   /* Search slots for key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len);
+  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
+
+  /* No free slots, and slot not found */
+  if (!slot_ptr)
+    return 0;
 
   /* Did we find a value? */
   if (*slot_ptr == 0) {
@@ -1131,7 +1143,8 @@ void _mmc_delete_slot(
 /*
  * MU32 * _mmc_find_slot(
  *   mmap_cache * cache, MU32 hash_slot,
- *   void *key_ptr, int key_len
+ *   void *key_ptr, int key_len,
+ *   int write
  * )
  *
  * Search current page for a particular 'key'. Use 'hash_slot' to
@@ -1140,7 +1153,8 @@ void _mmc_delete_slot(
 */
 MU32 * _mmc_find_slot(
   mmap_cache * cache, MU32 hash_slot,
-  void *key_ptr, int key_len
+  void *key_ptr, int key_len,
+  int write
 ) {
   MU32 slots_left, * slots_end;
   /* Modulo hash_slot to find starting slot */
@@ -1190,7 +1204,7 @@ MU32 * _mmc_find_slot(
     ASSERT(slot_ptr >= cache->p_base_slots && slot_ptr < slots_end);
   }
 
-  ASSERT(0);
+  ASSERT(write);
   return 0;
 }
 
@@ -1328,7 +1342,7 @@ int  _mmc_test_page(mmap_cache * cache) {
         ASSERT(hash_slot == S_SlotHash(base_det));
         if (!(hash_slot == S_SlotHash(base_det))) return 0;
 
-        find_slot_ptr = _mmc_find_slot(cache, hash_slot, S_KeyPtr(base_det), key_len);
+        find_slot_ptr = _mmc_find_slot(cache, hash_slot, S_KeyPtr(base_det), key_len, 0);
 
         ASSERT(find_slot_ptr == slot_ptr);
         if (!(find_slot_ptr == slot_ptr)) return 0;
