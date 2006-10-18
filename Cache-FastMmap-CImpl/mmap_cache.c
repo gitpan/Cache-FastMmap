@@ -184,6 +184,8 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
     cache->expire_time = atoi(val);
   } else if (!strcmp(param, "share_file")) {
     cache->share_file = val;
+  } else if (!strcmp(param, "start_slots")) {
+    cache->start_slots = atoi(val);
   } else {
     _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
     return -1;

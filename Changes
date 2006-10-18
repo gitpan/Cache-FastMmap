@@ -1,5 +1,8 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.11  Web Oct 18 15:10 2006
+  - allow setting default slot count via start_slots argument
+
 1.10  Web Oct 18 14:50 2006
   - fc_lock() would segfault if no slots were available.
     Doesn't happen in normal usage, but can happen if

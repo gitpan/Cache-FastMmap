@@ -237,7 +237,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -456,7 +456,7 @@ sub new {
     = ($cache_size, $num_pages, $page_size);
 
   # Number of slots to start in each page
-  my $StartSlots = int($Args{StartSlots} || 0) || 89;
+  my $start_slots = int($Args{start_slots} || 0) || 89;
 
   # Save read through/write back/write through details
   my $write_back = ($Args{write_action} || 'write_through') eq 'write_back';
@@ -483,6 +483,7 @@ sub new {
   $Cache->fc_set_param('num_pages', $num_pages);
   $Cache->fc_set_param('expire_time', $expire_time);
   $Cache->fc_set_param('share_file', $share_file);
+  $Cache->fc_set_param('start_slots', $start_slots);
 
   # And initialise it
   $Cache->fc_init();
