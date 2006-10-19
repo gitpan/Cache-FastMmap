@@ -237,7 +237,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 
 use constant FC_ISDIRTY => 1;
 # }}}

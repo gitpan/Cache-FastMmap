@@ -583,7 +583,7 @@ int mmc_read(
   MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 0);
 
   /* Did we find a value? */
-  if (*slot_ptr == 0) {
+  if (!slot_ptr || *slot_ptr == 0) {
 
     /* Return -1 if not */
     return -1;
@@ -653,7 +653,7 @@ int mmc_write(
   ASSERT(cache->p_cur != -1);
 
   /* If found, delete slot for new value */
-  if (*slot_ptr != 0) {
+  if (*slot_ptr > 1) {
     _mmc_delete_slot(cache, slot_ptr);
     ASSERT(*slot_ptr == 1);
   }
@@ -715,14 +715,10 @@ int mmc_delete(
   MU32 * flags
 ) {
   /* Search slots for key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
-
-  /* No free slots, and slot not found */
-  if (!slot_ptr)
-    return 0;
+  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 2);
 
   /* Did we find a value? */
-  if (*slot_ptr == 0) {
+  if (!slot_ptr || *slot_ptr == 0) {
 
     /* Return 0 if not deleted */
     return 0;
@@ -1146,7 +1142,7 @@ void _mmc_delete_slot(
  * MU32 * _mmc_find_slot(
  *   mmap_cache * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
- *   int write
+ *   int mode
  * )
  *
  * Search current page for a particular 'key'. Use 'hash_slot' to
@@ -1156,7 +1152,7 @@ void _mmc_delete_slot(
 MU32 * _mmc_find_slot(
   mmap_cache * cache, MU32 hash_slot,
   void *key_ptr, int key_len,
-  int write
+  int mode
 ) {
   MU32 slots_left, * slots_end;
   /* Modulo hash_slot to find starting slot */
@@ -1177,14 +1173,15 @@ MU32 * _mmc_find_slot(
          ((data_offset & 3) == 0)));
 
     /* data_offset == 0 means empty slot, and no more beyond */
-    if (data_offset == 0) {
+    /* data_offset == 1 means deleted slot, we can reuse if writing */
+    if (data_offset == 0 || (data_offset == 1 && mode == 1)) {
 
       /* Return pointer to last checked slot */
       return slot_ptr;
     }
 
+    /* deleted slot, keep looking */
     if (data_offset == 1) {
-      /* data_offset == 1 means empty entry, but possibly more past this one */
 
     } else {
       /* Offset is from start of data area */
@@ -1206,7 +1203,6 @@ MU32 * _mmc_find_slot(
     ASSERT(slot_ptr >= cache->p_base_slots && slot_ptr < slots_end);
   }
 
-  ASSERT(write);
   return 0;
 }
 

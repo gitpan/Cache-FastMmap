@@ -1,5 +1,8 @@
 Revision history for Perl extension Cache::FastMmap::CImpl.
 
+1.12  Thu Oct 19 09:50 2006
+  - allow writing into a deleted slot
+
 1.11  Web Oct 18 15:10 2006
   - allow setting default slot count via start_slots argument
 

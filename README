@@ -1,4 +1,4 @@
-Cache::FastMmap version 1.11
+Cache::FastMmap version 1.12
 ===========================
 
 A shared memory cache through an mmap'ed file. It's core is written
