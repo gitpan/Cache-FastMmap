@@ -244,7 +244,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -868,7 +868,7 @@ sub _expunge_all {
   # Repeat expunge for each page
   for (0 .. $Self->{num_pages}-1) {
     $Cache->fc_lock($_);
-    $Self->_expunge_page($Mode, $WB, 0);
+    $Self->_expunge_page($Mode, $WB, -1);
     $Cache->fc_unlock();
   }
 

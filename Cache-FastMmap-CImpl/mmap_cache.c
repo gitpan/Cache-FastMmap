@@ -756,13 +756,13 @@ int last_access_cmp(const void * a, const void * b) {
  *
  * Calculate entries to expunge from current page.
  *
- * If mode == 0, only expired items are expunged
- * If mode == 1, all entries are expunged
- * If mode == 2, 
- *   If len < 0, entries are expunged till 40% free space is created
- *   If len >= 0, and space available for len bytes, nothing is expunged
- *   If len >= 0, and not enough space, entries are expunged till 40% free
- *
+ *  If len >= 0
+ *    If space available for len bytes & >30% slots free, nothing is expunged
+ *  If len < 0 or not above
+ *    If mode == 0, only expired items are expunged
+ *    If mode == 1, all entries are expunged
+ *    If mode == 2, entries are expunged till 40% free space is created
+ *    
  * If expunged is non-null pointer, result is filled with
  * a list of slots to expunge
  *
@@ -776,14 +776,14 @@ int mmc_calc_expunge(
 ) {
   double slots_pct;
 
-  /* Length of key/value data when stored */
-  MU32 kvlen = KV_SlotLen(len, 0);
-  ROUNDLEN(kvlen);
-
   ASSERT(cache->p_cur != -1);
 
   /* If len >= 0, and space available for len bytes, nothing is expunged */
-  if (mode == 2 && len >= 0) {
+  if (len >= 0) {
+    /* Length of key/value data when stored */
+    MU32 kvlen = KV_SlotLen(len, 0);
+    ROUNDLEN(kvlen);
+
     slots_pct = (double)(cache->p_free_slots - cache->p_old_slots) / cache->p_num_slots;
 
     /* Nothing to do if hash table more than 30% free slots and enough free space */

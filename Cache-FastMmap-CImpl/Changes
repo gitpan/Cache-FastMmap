@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap::CImpl.
 
+1.14  Thu Oct 20 11:45 2006
+  - alter calc_expunge to allow more efficient alternate
+    implementation cases
+
 1.13  Thu Oct 20 11:15 2006
   - mention UNIX/Win32 compatiability in docs
     (http://rt.cpan.org/Ticket/Display.html?id=16501)
