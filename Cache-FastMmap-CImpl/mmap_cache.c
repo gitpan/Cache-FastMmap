@@ -83,7 +83,7 @@ struct mmap_cache_it {
 
 
 /* Internal functions */
-void _mmc_set_error(mmap_cache *, int, char *, ...);
+int _mmc_set_error(mmap_cache *, int, char *, ...);
 void _mmc_init_page(mmap_cache *, MU32);
 
 MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
@@ -455,7 +455,8 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
     return -1;
   }
 
-  if (!(P_Magic(p_ptr) == 0x92f7e3b1)) return -1;
+  if (!(P_Magic(p_ptr) == 0x92f7e3b1))
+    return -1 + _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %u", p_cur, p_offset);
 
   /* Copy to cache structure */
   cache->p_num_slots = P_NumSlots(p_ptr);
@@ -465,10 +466,14 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_free_bytes = P_FreeBytes(p_ptr);
 
   /* Reality check */
-  if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size) return -1;
-  if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots) return -1;
-  if (cache->p_old_slots > cache->p_free_slots) return -1;
-  if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size) return -1;
+  if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size)
+    return -1 + _mmc_set_error(cache, 0, "cache num_slots mistmatch");
+  if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots)
+    return -1 + _mmc_set_error(cache, 0, "cache free slots mustmatch");
+  if (cache->p_old_slots > cache->p_free_slots)
+    return -1 + _mmc_set_error(cache, 0, "cache old slots mistmatch");
+  if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
+    return -1 + _mmc_set_error(cache, 0, "cache free data mistmatch");
 
   /* Check page header */
   ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
@@ -769,6 +774,8 @@ int mmc_calc_expunge(
   int mode, int len,
   MU32 * new_num_slots, MU32 *** to_expunge
 ) {
+  double slots_pct;
+
   /* Length of key/value data when stored */
   MU32 kvlen = KV_SlotLen(len, 0);
   ROUNDLEN(kvlen);
@@ -777,17 +784,11 @@ int mmc_calc_expunge(
 
   /* If len >= 0, and space available for len bytes, nothing is expunged */
   if (mode == 2 && len >= 0) {
+    slots_pct = (double)(cache->p_free_slots - cache->p_old_slots) / cache->p_num_slots;
 
-    if (
-      /* Hash table more than 30% free slots? */
-      ((double)(cache->p_free_slots - cache->p_old_slots) / cache->p_num_slots > 0.3) &&
-      /* And enough free space? */
-      (cache->p_free_bytes >= kvlen) 
-       )
-    {
-      /* Nothing to do */
+    /* Nothing to do if hash table more than 30% free slots and enough free space */
+    if (slots_pct > 0.3 && cache->p_free_bytes >= kvlen)
       return 0;
-    }
   }
 
   {
@@ -832,12 +833,10 @@ int mmc_calc_expunge(
         continue;
       }
 
-      /* If mode == 2, track used space */
+      /* Track used space */
       kvlen = S_SlotLen(base_det);
       ROUNDLEN(kvlen);
       ASSERT(kvlen <= page_data_size);
-
-      /* Keep track of total data used */
       used_data += kvlen;
       ASSERT(used_data <= page_data_size);
 
@@ -849,8 +848,9 @@ int mmc_calc_expunge(
     ASSERT(copy_base_det_in == copy_base_det_out);
     ASSERT(mode != 1 || copy_base_det_out == copy_base_det_end);
 
-    /* Calculate number of new slots */
-    if ((double)(copy_base_det_end - copy_base_det_out) / num_slots > 0.3) {
+    /* Increase slot count if free count is low and there's space to increase */
+    slots_pct = (double)(copy_base_det_end - copy_base_det_out) / num_slots;
+    if (slots_pct > 0.3 && (page_data_size - used_data > (num_slots + 1) * 4 || mode == 2)) {
       num_slots = (num_slots * 2) + 1;
     }
     page_data_size = cache->c_page_size - num_slots * 4 - P_HEADERSIZE;
@@ -1240,12 +1240,12 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
 }
 
 /*
- * void _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...)
+ * int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...)
  *
  * Set internal error string/state
  *
 */
-void _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
+int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
   va_list ap;
   static char errbuf[1024];
 
@@ -1268,7 +1268,7 @@ void _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
 
   va_end(ap);
 
-  return;
+  return 0;
 }
 
 /*

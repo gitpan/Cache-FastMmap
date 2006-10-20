@@ -162,6 +162,13 @@ Cache::FastMmap has noticeable performance improvements.
 See L<http://cpan.robm.fastmail.fm/cache_perf.html> for some
 comparisons to other modules.
 
+=head1 COMPATIABILITY
+
+Cache::FastMmap uses mmap to map a file as the shared cache space,
+and fcntl to do page locking. This means it should work on most
+UNIX like operating systems, but will not work on Windows or
+Win32 like environments.
+
 =head1 MEMORY SIZE
 
 Because Cache::FastMmap mmap's a shared file into your processes memory
@@ -237,7 +244,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.12';
+our $VERSION = '1.13';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -525,7 +532,7 @@ sub get {
       my $write_back = $Self->{write_back};
 
       # If not using raw values, use freeze() to turn data 
-      $Val = freeze($Val) if !$Self->{raw_values};
+      $Val = freeze(\$Val) if !$Self->{raw_values};
 
       # Get key/value len (we've got 'use bytes'), and do expunge check to
       #  create space if needed
@@ -542,7 +549,7 @@ sub get {
 
   # If not using raw values, use thaw() to turn data back into object
   if (!$Self->{raw_values}) {
-    $Val = thaw($Val);
+    $Val = ${thaw($Val)} if defined $Val;
   }
 
   return $Val;
@@ -568,7 +575,7 @@ sub set {
   my $write_back = $Self->{write_back};
 
   # If not using raw values, use freeze() to turn data 
-  my $Val = $Self->{raw_values} ? $_[2] : freeze($_[2]);
+  my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
 
   # Get key/value len (we've got 'use bytes'), and do expunge check to
   #  create space if needed
@@ -729,7 +736,7 @@ sub get_keys {
 
   # If we're getting values as well, and they're not raw, unfreeze them
   my @Details = $Cache->fc_get_keys(2);
-  for (@Details) { $_->{value} = thaw($_->{value}); }
+  for (@Details) { $_->{value} = ${thaw($_->{value})}; }
   return @Details;
 }
 
@@ -789,7 +796,7 @@ sub multi_get {
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
-    $Val = thaw($Val) unless $Self->{raw_values};
+    $Val = ${thaw($Val)} unless $Self->{raw_values};
 
     # Save to return
     $KVs{$_} = $Val;
@@ -818,7 +825,7 @@ sub multi_set {
   while (my ($Key, $Val) = each %$KVs) {
 
     # If not using raw values, use freeze() to turn data 
-    $Val = freeze($Val) unless $Self->{raw_values};
+    $Val = freeze(\$Val) unless $Self->{raw_values};
 
     # Get key/value len (we've got 'use bytes'), and do expunge check to
     #  create space if needed
@@ -926,7 +933,7 @@ Rob Mueller E<lt>L<mailto:cpan@robm.fastmail.fm>E<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2005 by FastMail IP Partners
+Copyright (C) 2003-2006 by FastMail IP Partners
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

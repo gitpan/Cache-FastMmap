@@ -1,5 +1,17 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.13  Thu Oct 20 11:15 2006
+  - mention UNIX/Win32 compatiability in docs
+    (http://rt.cpan.org/Ticket/Display.html?id=16501)
+  - detect page corruption better and croak rather than segfault
+    (http://rt.cpan.org/Ticket/Display.html?id=17335)
+  - when running in raw_values => 0 mode, always store
+    reference to data. Storable doesn't like freeze(SCALAR)
+    (http://rt.cpan.org/Ticket/Display.html?id=16762)
+  - Handle edge case of slot count increase when page
+    already nearly full possibly causing corruption
+    (can only happen if ->purge() called at just the wrong time)
+
 1.12  Thu Oct 19 09:50 2006
   - allow writing into a deleted slot
 

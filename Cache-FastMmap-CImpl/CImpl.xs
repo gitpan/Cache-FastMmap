@@ -389,7 +389,7 @@ fc_expunge(obj, mode, wb, len)
     int len;
   INIT:
     mmap_cache * cache;
-    MU32 new_num_pages = 0, ** to_expunge = 0;
+    MU32 new_num_slots = 0, ** to_expunge = 0;
     int num_expunge, item;
 
     void * key_ptr, * val_ptr;
@@ -413,7 +413,7 @@ fc_expunge(obj, mode, wb, len)
 
   PPCODE:
 
-    num_expunge = mmc_calc_expunge(cache, mode, len, &new_num_pages, &to_expunge);
+    num_expunge = mmc_calc_expunge(cache, mode, len, &new_num_slots, &to_expunge);
     if (to_expunge) {
 
       /* Want list of expunged keys/values? */
@@ -452,7 +452,7 @@ fc_expunge(obj, mode, wb, len)
         }
       }
 
-      mmc_do_expunge(cache, num_expunge, new_num_pages, to_expunge);
+      mmc_do_expunge(cache, num_expunge, new_num_slots, to_expunge);
     }
 
 

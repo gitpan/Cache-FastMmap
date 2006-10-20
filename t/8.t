@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 13;
+use Test::More tests => 17;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -15,6 +15,12 @@ ok( defined $FC );
 
 # Test empty cache
 ok( !defined $FC->get(''),          "empty get('')" );
+
+ok( $FC->set('123', 'abc'),          "set('123', 'abc')" );
+ok( $FC->get('123') eq 'abc',        "get('123') eq 'abc'");
+
+ok( $FC->set('123', undef),          "set('123', undef)" );
+ok( !defined $FC->get('123'),        "!defined get('123')");
 
 ok( $FC->set('123', [ 'abc' ]),          "set('123', [ 'abc' ])" );
 ok( eq_array($FC->get('123'), [ 'abc' ]),    "get('123') eq [ 'abc' ]");
