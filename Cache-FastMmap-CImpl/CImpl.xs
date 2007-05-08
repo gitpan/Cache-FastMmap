@@ -54,7 +54,7 @@ fc_set_param(obj, param, val)
 
   CODE:
     RETVAL = mmc_set_param(cache, param, val);
-  POST_CALL:
+  POSTCALL:
     if (RETVAL != 0) {
       croak(mmc_error(cache));
     }
@@ -81,7 +81,7 @@ fc_init(obj)
 
   CODE:
     RETVAL = mmc_init(cache);
-  POST_CALL:
+  POSTCALL:
     if (RETVAL != 0) {
       croak(mmc_error(cache));
     }
@@ -175,7 +175,7 @@ fc_lock(obj, page);
 
   CODE:
     RETVAL = mmc_lock(cache, (MU32)page);
-  POST_CALL:
+  POSTCALL:
     if (RETVAL != 0) {
       croak(mmc_error(cache));
     }
@@ -204,7 +204,7 @@ fc_unlock(obj);
 
   CODE:
     RETVAL = mmc_unlock(cache);
-  POST_CALL:
+  POSTCALL:
     if (RETVAL != 0) {
       croak(mmc_error(cache));
     }
@@ -313,7 +313,7 @@ fc_write(obj, hash_slot, key, val, in_flags)
     key_len = (int)pl_key_len;
 
     /* Check for storing undef, and store empty string with undef flag set */
-    if (val == &PL_sv_undef) {
+    if (!SvOK(val)) {
       in_flags |= FC_UNDEF;
 
       val_ptr = "";

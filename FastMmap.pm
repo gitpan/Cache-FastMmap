@@ -1,7 +1,5 @@
 package Cache::FastMmap;
 
-use Data::Dumper;
-
 =head1 NAME
 
 Cache::FastMmap - Uses an mmap'ed file to act as a shared memory interprocess cache
@@ -244,7 +242,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '1.14';
+our $VERSION = '1.15';
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -259,7 +257,8 @@ Basic global parameters are:
 
 =item * B<share_file>
 
-File to mmap for sharing of data (default: /tmp/sharefile)
+File to mmap for sharing of data (default on unix: /tmp/sharefile-$pid-$time,
+default on windows: c:\sharefile-$pid-$time)
 
 =item * B<init_file>
 
@@ -374,15 +373,40 @@ the I<read_cb>
 
 Either 'write_back' or 'write_through'. (default: write_through)
 
+=item * B<allow_recursive>
+
+If you're using a callback function, then normally the cache is not
+re-enterable, and attempting to call a get/set on the cache will
+cause an error. By setting this to one, the cache will unlock any
+pages before calling the callback. During the unlock time, other
+processes may change data in current cache page, causing possible
+unexpected effects. You shouldn't set this unless you know you
+want to be able to recall to the cache within a callback.
+(default: 0)
+
 =item * B<empty_on_exit>
 
 When you have 'write_back' mode enabled, then
 you really want to make sure all values from the cache are expunged
-when your program exits so any changes are written back. This is a
-bit tricky, because we don't know if you're in a child, so you
-must ensure that the parent process either explicitly calls
-I<empty()> or that this flag is set to true when the parent connects
-to the cache, and false in all the children
+when your program exits so any changes are written back.
+
+The trick is that we only want to do this in the parent process,
+we don't want any child processes to empty the cache when they exit.
+So if you set this, it takes the PID via $$, and only calls
+empty in the DESTROY method if $$ matches the pid we captured
+at the start. (default: 0)
+
+=item * B<unlink_on_exit>
+
+Unlink the share file when the cache is destroyed.
+
+As with empty_on_exit, this will only unlink the file if the
+DESTROY occurs in the same PID that the cache was created in
+so that any forked children don't unlink the file.
+
+This value defaults to 1 if the share_file specified does
+not already exist. If the share_file specified does already
+exist, it defaults to 0.
 
 =back
 
@@ -396,10 +420,20 @@ sub new {
   bless ($Self, $Class);
 
   # Work out cache file and whether to init
-  my $share_file = $Self->{share_file}
-    = $Args{share_file} || '/tmp/sharefile';
+  my $share_file = $Args{share_file};
+  if (!$share_file) {
+    $share_file = ($^O =~ /win/i ? "c:\\sharefile" : "/tmp/sharefile");
+    $share_file .= "-" . $$ . "-" . time;
+  }
+  $Self->{share_file} = $share_file;
+
   my $init_file = $Args{init_file} || 0;
   my $test_file = $Args{test_file} || 0;
+
+  # Worth out unlink default if not specified
+  if (!exists $Args{unlink_on_exit}) {
+    $Args{unlink_on_exit} = -f($share_file) ? 0 : 1;
+  }
 
   # Storing raw/storable values?
   my $raw_values = $Self->{raw_values} = int($Args{raw_values} || 0);
@@ -469,8 +503,13 @@ sub new {
   my $write_back = ($Args{write_action} || 'write_through') eq 'write_back';
   @$Self{qw(context read_cb write_cb delete_cb)}
     = @Args{qw(context read_cb write_cb delete_cb)};
-  @$Self{qw(empty_on_exit cache_not_found write_back)}
-    = (@Args{qw(empty_on_exit cache_not_found)}, $write_back);
+  @$Self{qw(cache_not_found allow_recursive write_back)}
+    = (@Args{qw(cache_not_found allow_recursive)}, $write_back);
+  @$Self{qw(empty_on_exit unlink_on_exit)}
+    = @Args{qw(empty_on_exit unlink_on_exit)};
+
+  # Save pid
+  $Self->{pid} = $$;
 
   # Initialise C cache code
   my $Cache = Cache::FastMmap::CImpl::fc_new();
@@ -523,7 +562,17 @@ sub get {
   if (!$Found && (my $read_cb = $Self->{read_cb})) {
 
     # Callback to read from underlying data store
+    # (unlock page first if we allow recursive calls
+    $Cache->fc_unlock() if $Self->{allow_recursive};
     $Val = eval { $read_cb->($Self->{context}, $_[1]); };
+    my $Err = $@;
+    $Cache->fc_lock($HashPage) if $Self->{allow_recursive};
+
+    # Pass on any error
+    if ($Err) {
+      $Cache->fc_unlock();
+      die $Err;
+    }
 
     # If we found it, or want to cache not-found, store back into our cache
     if (defined $Val || $Self->{cache_not_found}) {
@@ -536,7 +585,7 @@ sub get {
 
       # Get key/value len (we've got 'use bytes'), and do expunge check to
       #  create space if needed
-      my $KVLen = length($_[1]) + length($Val);
+      my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
       $Self->_expunge_page(2, 1, $KVLen);
 
       $Cache->fc_write($HashSlot, $_[1], $Val, 0);
@@ -567,6 +616,9 @@ unless you read the code to understand how it works
 sub set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
+  # If not using raw values, use freeze() to turn data 
+  my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
+
   # Hash value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
   $Cache->fc_lock($HashPage) unless $_[3] && $_[3]->{skip_lock};
@@ -574,12 +626,9 @@ sub set {
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
 
-  # If not using raw values, use freeze() to turn data 
-  my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
-
   # Get key/value len (we've got 'use bytes'), and do expunge check to
   #  create space if needed
-  my $KVLen = length($_[1]) + length($Val);
+  my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
@@ -629,9 +678,8 @@ operations lock the page and you may end up with a dead lock!
 
 =item *
 
-Make sure your sub does not die/throw an exception, otherwise the
-unlocking code will be skipped. You can protect yourself by
-wrapping everything in your sub in an C<eval { }>
+If your sub does a die/throws an exception, this will be caught
+to allow the pack to be unlocked, and then rethrown (1.15 onwards)
 
 =back
 
@@ -640,8 +688,10 @@ sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   my $Value = $Self->get($_[1], { skip_unlock => 1 });
-  $Value = $_[2]->($_[1], $Value);
+  eval { $Value = $_[2]->($_[1], $Value); };
+  my $Err = $@;
   $Self->set($_[1], $Value, { skip_lock => 1 });
+  die $Err if $Err;
 
   return $Value;
 }
@@ -900,8 +950,8 @@ sub _expunge_page {
 sub DESTROY {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  # Expunge all entries on exit if requested
-  if ($Self->{empty_on_exit} && $Cache) {
+  # Expunge all entries on exit if requested and in parent process
+  if ($Self->{empty_on_exit} && $Cache && $Self->{pid} == $$) {
     $Self->empty();
   }
 
@@ -910,11 +960,47 @@ sub DESTROY {
     $Cache = undef;
     delete $Self->{Cache};
   }
+
+  unlink($Self->{share_file})
+    if $Self->{unlink_on_exit} && $Self->{pid} == $$;
+}
+
+sub CLONE {
+  die "Cache::FastMmap does not support threads sorry";
 }
 
 1;
 
 __END__
+
+=back
+
+=head1 INCOMPATIABLE CHANGES
+
+=over 4
+
+=item From 1.15
+
+=over 4
+
+=item *
+
+Default share_file name is no-longer /tmp/sharefile, but /tmp/sharefile-$pid-$time.
+This ensures that different runs/processes don't interfere with each other, but
+means you may not connect up to the file you expect. You should be choosing an
+explicit name in most cases.
+
+=item *
+
+The new option unlink_on_exit defaults to true if you pass a filename for the
+share_file which doesn't already exist. This means if you have one process that
+creates the file, and another that expects the file to be there, by default it
+won't be.
+
+Otherwise the defaults seem sensible to cleanup unneeded share files rather than
+leaving them around to accumulate.
+
+=back
 
 =back
 
@@ -933,7 +1019,7 @@ Rob Mueller E<lt>L<mailto:cpan@robm.fastmail.fm>E<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2006 by FastMail IP Partners
+Copyright (C) 2003-2007 by FastMail IP Partners
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

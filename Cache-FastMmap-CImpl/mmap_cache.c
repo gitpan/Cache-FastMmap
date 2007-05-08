@@ -417,6 +417,10 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   int lock_res = -1;
   void * p_ptr;
 
+  /* Check not already locked */
+  if (cache->p_cur != -1)
+    return -1 + _mmc_set_error(cache, 0, "page %u is already locked, can't lock multiple pages", cache->p_cur);
+
   /* Setup page details */
   p_offset = p_cur * cache->c_page_size;
   p_ptr = PTR_ADD(cache->mm_var, p_offset);

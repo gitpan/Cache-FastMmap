@@ -1,4 +1,20 @@
-Revision history for Perl extension Cache::FastMmap::CImpl.
+Revision history for Perl extension Cache::FastMmap.
+
+1.15  Thu May 8 17:12 2006
+  - catch and rethrow die/exceptions in get_and_set() callbacks
+  - avoid undef warnings when using cache_not_found mode
+  - use unique tempfile name rather than the same every time
+  - add allow_recursive option to allow calls to cache
+    from within a read/write callback sub
+  - add checks to die if we try and lock a cache twice,
+    rather than just causing mysterious errors
+  - add unlink_on_exit to automatically delete the share_file
+    when the cache exits. default to true if we created
+    the share_file, false if we connected to an existing one
+  - make empty_on_exit only call empty if the pid of the
+    process we're cleaning up in is the same as the pid we
+    were created in
+  - die in CLONE, making it clear threads aren't supported
 
 1.14  Thu Oct 20 11:45 2006
   - alter calc_expunge to allow more efficient alternate
