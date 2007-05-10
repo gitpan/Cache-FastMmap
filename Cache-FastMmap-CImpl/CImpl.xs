@@ -428,15 +428,21 @@ fc_expunge(obj, mode, wb, len)
           HV * ih = (HV *)sv_2mortal((SV *)newHV());
 
           SV * key = newSVpvn((const char *)key_ptr, key_len);
-          SV * val = newSVpvn((const char *)val_ptr, val_len);
-
           if (flags & FC_UTF8KEY) {
             SvUTF8_on(key);
             flags ^= FC_UTF8KEY;
           }
-          if (flags & FC_UTF8VAL) {
-            SvUTF8_on(val);
-            flags ^= FC_UTF8VAL;
+
+          SV * val;
+          if (flags & FC_UNDEF) {
+            val = newSV(0);
+            flags ^= FC_UNDEF;
+          } else {
+            val = newSVpvn((const char *)val_ptr, val_len);
+            if (flags & FC_UTF8VAL) {
+              SvUTF8_on(val);
+              flags ^= FC_UTF8VAL;
+            }
           }
 
           /* Store in hash ref */
@@ -519,10 +525,16 @@ fc_get_keys(obj, mode)
 
         /* Add value to hash-ref if mode 2 */
         if (mode == 2) {
-          SV * val = newSVpvn((const char *)val_ptr, val_len);
-          if (flags & FC_UTF8VAL) {
-            SvUTF8_on(val);
-            flags ^= FC_UTF8VAL;
+          SV * val;
+          if (flags & FC_UNDEF) {
+            val = newSV(0);
+            flags ^= FC_UNDEF;
+          } else {
+            val = newSVpvn((const char *)val_ptr, val_len);
+            if (flags & FC_UTF8VAL) {
+              SvUTF8_on(val);
+              flags ^= FC_UTF8VAL;
+            }
           }
           hv_store(ih, "value", 5, val, 0);
         }

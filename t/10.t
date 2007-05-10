@@ -3,6 +3,7 @@
 
 use Test::More tests => 9;
 BEGIN { use_ok('Cache::FastMmap') };
+use Data::Dumper;
 use strict;
 
 #########################
@@ -51,5 +52,5 @@ $FC->set('bar', undef);
 %BackingStore = ();
 $FC->empty();
 
-ok( eq_hash(\%BackingStore, \%OrigBackingStore), "items match 1");
+ok( eq_hash(\%BackingStore, \%OrigBackingStore), "items match 1" . Dumper(\%BackingStore, \%OrigBackingStore));
 

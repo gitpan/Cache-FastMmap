@@ -231,7 +231,7 @@ int mmc_init(mmap_cache * cache) {
   ASSERT(c_num_pages >= 1 && c_num_pages <= 1000);
 
   c_page_size = cache->c_page_size;
-  ASSERT(c_page_size >= 1024 && c_page_size <= 1024*1024);
+  ASSERT(c_page_size >= 1024 && c_page_size <= 16*1024*1024);
 
   start_slots = cache->start_slots;
   ASSERT(start_slots >= 10 && start_slots <= 500);

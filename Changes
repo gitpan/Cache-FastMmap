@@ -1,6 +1,11 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.15  Thu May 8 17:12 2006
+1.16  Thu May 8 17:12 2007
+  - fix typo in Changes file (1.15 is 2007, not 2006)
+  - fix get_keys(2) when undef values in cache
+  - fix some leak detection tests
+
+1.15  Thu May 8 17:12 2007
   - catch and rethrow die/exceptions in get_and_set() callbacks
   - avoid undef warnings when using cache_not_found mode
   - use unique tempfile name rather than the same every time

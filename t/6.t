@@ -20,7 +20,14 @@ my $GTop = GTop->new;
 
 our ($DidRead, $DidWrite, $DidDelete, $HitCount);
 
-our $FC = Cache::FastMmap->new(
+our $FC;
+
+TestLeak(\&NewLeak);
+TestLeak(\&NewLeak);
+TestLeak(\&NewLeak2);
+TestLeak(\&NewLeak2);
+
+$FC = Cache::FastMmap->new(
   init_file => 1,
   raw_values => 1,
   num_pages => 17,
@@ -32,11 +39,6 @@ our $FC = Cache::FastMmap->new(
 );
 
 ok( defined $FC );
-
-TestLeak(\&NewLeak);
-TestLeak(\&NewLeak);
-TestLeak(\&NewLeak2);
-TestLeak(\&NewLeak2);
 
 # Prefill cache to make sure all pages mapped
 for (1 .. 2000) {
@@ -53,11 +55,10 @@ TestLeak(\&GetLeak);
 $FC->clear();
 
 $StartKey = 1;
-TestLeak(\&WBLeak);
+TestLeak(\&SetLeak);
 
-$FC->get_keys(0);
-$FC->get_keys(1);
-$FC->get_keys(2);
+our (@a, @b, @c);
+ListLeak();
 TestLeak(\&ListLeak);
 
 sub RandStr {
@@ -76,7 +77,8 @@ sub TestLeak {
   }
   my $After = $GTop->proc_mem($$)->size;
 
-  ok( ($After - $Before)/1024 < 30, "leak test > 30k");
+  my $Extra = ($After - $Before)/1024;
+  ok( $Extra < 30, "leak test $Extra > 30k");
 }
 
 sub NewLeak {
@@ -93,6 +95,7 @@ sub NewLeak {
       write_action => 'write_back'
     );
   }
+  $FC = undef;
 
 }
 
@@ -110,13 +113,19 @@ sub NewLeak2 {
       write_action => 'write_back'
     );
   }
+  $FC = undef;
 
 }
 
 
 sub SetLeak {
-  for (1 .. 20000) {
-    $FC->set("blah" . $StartKey++ . "blah", RandStr(10));
+  for (1 .. 10000) {
+    my $Val;
+    if ($_ < 9000) { $Val = RandStr(int(rand(15))+2); }
+    elsif ($_ < 9500) { $Val = "\x{263A}" . RandStr(int(rand(15))+2); }
+    else { $Val = undef; }
+
+    $FC->set("blah" . $StartKey++ . "blah", $Val);
   }
 }
 
@@ -129,7 +138,11 @@ sub GetLeak {
 sub WBLeak {
   for (1 .. 5000) {
     my $Key = "blah" . $StartKey++ . "blah";
-    $FC->set($Key, RandStr(10));
+    my $Val;
+    if ($_ < 4000) { $Val = RandStr(int(rand(15))+2); }
+    elsif ($_ < 4500) { $Val = "\x{263A}" . RandStr(int(rand(15))+2); }
+    else { $Val = undef; }
+    $FC->set($Key, $Val);
     my $PreDidWrite = $DidWrite;
     $FC->empty();
     $PreDidWrite + 1 == $DidWrite
@@ -140,9 +153,10 @@ sub WBLeak {
 }
 
 sub ListLeak {
-  for (1 .. 1000) {
-    my $a = [ $FC->get_keys(0) ];
-    my $b = [ $FC->get_keys(1) ];
-    my $c = [ $FC->get_keys(2) ];
+  for (1 .. 100) {
+    @a = $FC->get_keys(0);
+    @b = $FC->get_keys(1);
+    @c = $FC->get_keys(2);
+    @a = @b = @c = ();
   }
 }
