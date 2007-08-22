@@ -1,5 +1,4 @@
 .shipit
-Cache-FastMmap-CImpl/Changes
 Cache-FastMmap-CImpl/CImpl.pm
 Cache-FastMmap-CImpl/CImpl.xs
 Cache-FastMmap-CImpl/Makefile.PL
@@ -12,7 +11,7 @@ Changes
 FastMmap.pm
 Makefile.PL
 MANIFEST			This list of files
-META.yml			Module meta-data (added by MakeMaker)
+META.yml
 README
 t/1.t
 t/10.t

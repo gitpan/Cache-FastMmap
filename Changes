@@ -1,5 +1,15 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.19  Thu Aug 23 09:03 2007
+  - bad C declaration crept in again, now in svn
+
+1.18  Thu Aug 22 17:30 2007
+  - fix use of $^O not to catch "darwin"
+    (http://rt.cpan.org/Ticket/Display.html?id=28330)
+
+1.17  Thu Aug 22 17:14 2007
+  - fix declaration in C code that wasn't legal C
+
 1.16  Thu May 8 17:12 2007
   - fix typo in Changes file (1.15 is 2007, not 2006)
   - fix get_keys(2) when undef values in cache

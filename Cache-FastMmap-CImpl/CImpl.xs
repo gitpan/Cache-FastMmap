@@ -428,12 +428,13 @@ fc_expunge(obj, mode, wb, len)
           HV * ih = (HV *)sv_2mortal((SV *)newHV());
 
           SV * key = newSVpvn((const char *)key_ptr, key_len);
+          SV * val;
+
           if (flags & FC_UTF8KEY) {
             SvUTF8_on(key);
             flags ^= FC_UTF8KEY;
           }
 
-          SV * val;
           if (flags & FC_UNDEF) {
             val = newSV(0);
             flags ^= FC_UNDEF;

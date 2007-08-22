@@ -220,7 +220,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.16';
+our $VERSION = '1.19';
 
 use Cache::FastMmap::CImpl;
 
@@ -402,7 +402,7 @@ sub new {
   # Work out cache file and whether to init
   my $share_file = $Args{share_file};
   if (!$share_file) {
-    $share_file = ($^O =~ /win/i ? "c:\\sharefile" : "/tmp/sharefile");
+    $share_file = ($^O eq "MSWin32" ? "c:\\sharefile" : "/tmp/sharefile");
     $share_file .= "-" . $$ . "-" . time;
   }
   $Self->{share_file} = $share_file;
