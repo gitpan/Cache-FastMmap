@@ -178,6 +178,66 @@ However, the OS will think your process is quite large, which might
 mean you hit some BSD::Resource or 'ulimits' you set previously that you
 thought were sane, but aren't anymore, so be aware.
 
+=head1 CACHE FILES AND OS ISSUES
+
+Because Cache::FastMmap uses an mmap'ed file, when you put values into
+the cache, you are actually "dirtying" pages in memory that belong to
+the cache file. Your OS will want to write those dirty pages back to
+the file on the actual physical disk, but the rate it does that at is
+very OS dependent.
+
+In Linux, you have some control over how the OS writes those pages
+back using a number of parameters in /proc/sys/vm
+
+  dirty_background_ratio
+  dirty_expire_centisecs
+  dirty_ratio
+  dirty_writeback_centisecs
+
+How you tune these depends heavily on your setup.
+
+As an interesting point, at least on our setup, we have observed
+a signficant change in behaviour somewhere between Linux 2.6.16 and
+2.6.20. We found that certain machines that were fine under 2.6.16 were
+suddenly experiencing a lot more IO under 2.6.20 that we were able to
+attribute to the Cache::FastMmap files, even though we hadn't changed
+any kernel parameters.
+
+In most cases, people are not actually concerned about the persistence
+of data in the cache, and so are happy to disable writing of any cache
+data back to disk at all. Baically what they want is an in memory only
+shared cache. The best way to do that is to use a "tmpfs" filesystem
+and put all cache files on there.
+
+For instance, all our machines have a /tmpfs mount point that we
+create in /etc/fstab as:
+
+  none /tmpfs tmpfs defaults,noatime,size=1000M 0 0
+
+And we put all our cache files on there. The tmpfs filesystem is smart
+enough to only use memory as required by files actually on the tmpfs,
+so making it 1G in size doesn't actually use 1G of memory, it only uses
+as much as the cache files we put on it. In all cases, we ensure that
+we never run out of real memory, so the cache files effectively act 
+just as named access points to shared memory.
+
+=head1 PAGE SIZE AND KEY/VALUE LIMITS
+
+To reduce lock contention, Cache::FastMmap breaks up the file
+into pages. When you get/set a value, it hashes the key to get a page,
+then locks that page, and uses a hash table within the page to
+get/store the actual key/value pair.
+
+One consequence of this is that you cannot store values larger than
+a page in the cache at all. Attempting to store values larger than
+a page size will fail (the set() function will return false).
+
+Also keep in mind that each page has it's own hash table, and that we
+store the key and value data of each item. So if you are expecting to
+store large values and/or keys in the cache, you should use page sizes
+that are definitely larger than your largest key + value size + a few
+kbytes for the overhead.
+
 =head1 USAGE
 
 Because the cache uses shared memory through an mmap'd file, you have
@@ -220,7 +280,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.19';
+our $VERSION = '1.20';
 
 use Cache::FastMmap::CImpl;
 
@@ -591,6 +651,10 @@ Store specified key/value pair into cache
 I<%Options> is optional, and is used by get_and_set() to control
 the locking behaviour. For now, you should probably ignore it
 unless you read the code to understand how it works
+
+This method returns true if the value was stored in the cache,
+false otherwise. See the PAGE SIZE AND KEY/VALUE LIMITS section
+for more details.
 
 =cut
 sub set {
@@ -995,7 +1059,7 @@ L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
 =head1 AUTHOR
 
-Rob Mueller E<lt>L<mailto:cpan@robm.fastmail.fm>E<gt>
+Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
 =head1 COPYRIGHT AND LICENSE
 

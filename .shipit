@@ -1,6 +1,5 @@
 # auto-generated shipit config file.
-#steps = FindVersion, ChangeVersion, CheckChangeLog, DistTest, Commit, Tag, MakeDist, PutInVFS
-steps =  MakeDist, PutInVFS
+steps = FindVersion, ChangeVersion, CheckChangeLog, DistTest, Commit, Tag, MakeDist, PutInVFS
 
 PutInVFS.dir = ~/cpan/cachefastmmap/
 

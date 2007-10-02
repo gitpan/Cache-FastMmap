@@ -2,13 +2,17 @@
 #########################
 
 use Test::More;
-eval "use GTop ()";
-if ($@) {
-  plan skip_all => 'No GTop installed, no memory leak tests';
-} else {
-  plan tests => 9;
+
+BEGIN {
+  eval "use GTop ();";
+  if ($@) {
+    plan skip_all => 'No GTop installed, no memory leak tests';
+  } else {
+    plan tests => 10;
+  }
+  use_ok('Cache::FastMmap');
 }
-BEGIN { use_ok('Cache::FastMmap') };
+
 use strict;
 
 my $GTop = GTop->new;
@@ -46,6 +50,9 @@ for (1 .. 2000) {
 }
 $FC->get('foo');
 
+our $Key = "blah100000blah";
+our $Val = "\x{263A}" . RandStr(17);
+
 our $StartKey = 1;
 TestLeak(\&SetLeak);
 
@@ -58,6 +65,11 @@ $StartKey = 1;
 TestLeak(\&SetLeak);
 
 our (@a, @b, @c);
+@a = $FC->get_keys(0);
+@b = $FC->get_keys(1);
+@c = $FC->get_keys(2);
+@a = @b = @c = ();
+
 ListLeak();
 TestLeak(\&ListLeak);
 
@@ -117,28 +129,27 @@ sub NewLeak2 {
 
 }
 
-
 sub SetLeak {
   for (1 .. 10000) {
-    my $Val;
+    $Key = "blah" . $StartKey++ . "blah";
     if ($_ < 9000) { $Val = RandStr(int(rand(15))+2); }
     elsif ($_ < 9500) { $Val = "\x{263A}" . RandStr(int(rand(15))+2); }
     else { $Val = undef; }
 
-    $FC->set("blah" . $StartKey++ . "blah", $Val);
+    $FC->set($Key, $Val);
   }
 }
 
 sub GetLeak {
   for (1 .. 20000) {
-    $HitCount++ if $FC->get("blah" . $StartKey++. "blah");
+    $Key = "blah" . $StartKey++ . "blah";
+    $HitCount++ if $FC->get($Key);
   }
 }
 
 sub WBLeak {
   for (1 .. 5000) {
-    my $Key = "blah" . $StartKey++ . "blah";
-    my $Val;
+    $Key = "blah" . $StartKey++ . "blah";
     if ($_ < 4000) { $Val = RandStr(int(rand(15))+2); }
     elsif ($_ < 4500) { $Val = "\x{263A}" . RandStr(int(rand(15))+2); }
     else { $Val = undef; }
