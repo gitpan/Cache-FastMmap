@@ -280,7 +280,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.20';
+our $VERSION = '1.21';
 
 use Cache::FastMmap::CImpl;
 
@@ -454,7 +454,9 @@ exist, it defaults to 0.
 sub new {
   my $Proto = shift;
   my $Class = ref($Proto) || $Proto;
-  my %Args = @_;
+
+  # If first item is a hash ref, use it as arguments
+  my %Args = ref($_[0]) eq 'HASH' ? %{shift()} : @_;
 
   my $Self = {};
   bless ($Self, $Class);
