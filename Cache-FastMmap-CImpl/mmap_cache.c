@@ -635,7 +635,7 @@ int mmc_read(
  *   cache_mmap * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
  *   void *val_ptr, int val_len,
- *   MU32 flags
+ *   MU32 expire_seconds, MU32 flags
  * )
  *
  * Write key to current page
@@ -645,7 +645,7 @@ int mmc_write(
   mmap_cache *cache, MU32 hash_slot,
   void *key_ptr, int key_len,
   void *val_ptr, int val_len,
-  MU32 flags
+  MU32 expire_seconds, MU32 flags
 ) {
   int did_store = 0;
   MU32 kvlen = KV_SlotLen(key_len, val_len);
@@ -675,7 +675,8 @@ int mmc_write(
     MU32 now = (MU32)time(0);
 
     /* Calculate expiry time */
-    MU32 expire_time = cache->expire_time ? now + cache->expire_time : 0;
+    if (expire_seconds == (MU32)-1) expire_seconds = cache->expire_time;
+    MU32 expire_time = expire_seconds ? now + expire_seconds : 0;
 
     /* Store info into slot */
     S_LastAccess(base_det) = now;

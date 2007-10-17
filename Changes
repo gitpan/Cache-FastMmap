@@ -1,6 +1,14 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.21  Thu Oct 16 10:40 2007
+1.23  Wed Oct 17 16:00 2007
+  - Fix expire time parsing
+
+1.22  Wed Oct 17 14:05 2007
+  - If third parameter to set() is not a references, treat it as
+    a specify expiry time. Increases compatiability with
+    Cache::Cache API. Helpful for Catalyst framework
+
+1.21  Tue Oct 16 10:40 2007
   - if first parameter to new() is a hash ref, use it as
      the options hash. Helpful for Catalyst framework
 

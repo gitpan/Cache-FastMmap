@@ -280,7 +280,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.21';
+our $VERSION = '1.23';
 
 use Cache::FastMmap::CImpl;
 
@@ -487,10 +487,7 @@ sub new {
   }
 
   # Work out expiry time in seconds
-  my $expire_time = $Args{expire_time} || 0;
-  my %Times = (m => 60, h => 60*60, d => 24*60*60);
-  $expire_time *= $Times{$1} if $expire_time =~ s/([mhd])$//i;
-  $Self->{expire_time} = $expire_time = int($expire_time);
+  my $expire_time = $Self->{expire_time} = parse_expire_time($Args{expire_time});
 
   # Function rounds to the nearest power of 2
   sub RoundPow2 { return int(2 ** int(log($_[0])/log(2)) + 0.1); }
@@ -630,7 +627,7 @@ sub get {
       my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
       $Self->_expunge_page(2, 1, $KVLen);
 
-      $Cache->fc_write($HashSlot, $_[1], $Val, 0);
+      $Cache->fc_write($HashSlot, $_[1], $Val, -1, 0);
     }
   }
 
@@ -665,9 +662,13 @@ sub set {
   # If not using raw values, use freeze() to turn data 
   my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
 
+  # Get opts, make compatiable with Cache::Cache interface
+  my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
+  my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
+
   # Hash value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage) unless $_[3] && $_[3]->{skip_lock};
+  $Cache->fc_lock($HashPage) unless $Opts && $Opts->{skip_lock};
 
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
@@ -678,7 +679,7 @@ sub set {
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
-  my $DidStore = $Cache->fc_write($HashSlot, $_[1], $Val, $write_back ? FC_ISDIRTY : 0);
+  my $DidStore = $Cache->fc_write($HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
   $Cache->fc_unlock();
@@ -991,6 +992,14 @@ sub _expunge_page {
     next if !($_->{flags} & FC_ISDIRTY);
     eval { $write_cb->($Self->{context}, $_->{key}, $_->{value}, $_->{expire_time}); };
   }
+}
+
+sub parse_expire_time {
+  my $expire_time = shift || '';
+  return 1 if $expire_time eq 'now';
+  return 0 if $expire_time eq 'never';
+  my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);
+  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{$2} : 0;
 }
 
 sub DESTROY {

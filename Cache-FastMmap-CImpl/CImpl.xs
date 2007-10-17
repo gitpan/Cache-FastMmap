@@ -278,11 +278,12 @@ fc_read(obj, hash_slot, key)
 
 
 int
-fc_write(obj, hash_slot, key, val, in_flags)
+fc_write(obj, hash_slot, key, val, expire_seconds, in_flags)
     SV * obj;
     U32  hash_slot;
     SV * key;
     SV * val;
+    U32 expire_seconds;
     U32 in_flags;
   INIT:
     mmap_cache * cache;
@@ -335,7 +336,7 @@ fc_write(obj, hash_slot, key, val, in_flags)
     }
 
     /* Write value to cache */
-    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)in_flags);
+    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_seconds, (MU32)in_flags);
 
   OUTPUT:
     RETVAL
@@ -653,7 +654,7 @@ fc_set(obj, key, val)
     mmc_lock(cache, hash_page);
 
     /* Get value data pointer */
-    mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, flags);
+    mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, -1, flags);
 
     mmc_unlock(cache);
 

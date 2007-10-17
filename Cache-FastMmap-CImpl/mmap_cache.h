@@ -193,7 +193,7 @@ int mmc_unlock(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
 int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *);
-int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32);
+int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32, MU32);
 int mmc_delete(mmap_cache *, MU32, void *, int, MU32 *);
 
 /* Functions of expunging values in current page */
