@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.24  Mon Oct 22 13:15 2007
+  - Add atomic get_and_remove() method thanks to
+      Darrell Bishop
+
 1.23  Wed Oct 17 16:00 2007
   - Fix expire time parsing
 

@@ -280,7 +280,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.23';
+our $VERSION = '1.24';
 
 use Cache::FastMmap::CImpl;
 
@@ -743,9 +743,13 @@ sub get_and_set {
   return $Value;
 }
 
-=item I<remove($Key)>
+=item I<remove($Key, [ \%Options ])>
 
 Delete the given key from the cache
+
+I<%Options> is optional, and is used by get_and_remove() to control
+the locking behaviour. For now, you should probably ignore it
+unless you read the code to understand how it works
 
 =cut
 sub remove {
@@ -753,7 +757,10 @@ sub remove {
 
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+
+  # Lock is done only if we're not in the middle of a get_and_remove() operation.
+  $Cache->fc_lock($HashPage) unless $_[2] && $_[2]->{skip_lock};
+
   my ($DidDel, $Flags) = $Cache->fc_delete($HashSlot, $_[1]);
   $Cache->fc_unlock();
 
@@ -765,6 +772,23 @@ sub remove {
   }
   
   return $DidDel;
+}
+
+=item I<get_and_remove($Key)>
+
+Atomically retrieve value of a Key while removing it from the cache.
+
+The page is locked while retrieving the $Key and is unlocked only after
+the value is removed, thus guaranteeing the value stored by someone else
+isn't removed by us.
+
+=cut
+sub get_and_remove {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  my $Value = $Self->get($_[1], { skip_unlock => 1 });
+  my $DidDel = $Self->remove($_[1], { skip_lock => 1 });
+  return wantarray ? ($Value, $DidDel) : $Value;
 }
 
 =item I<clear()>

@@ -32,18 +32,45 @@ is( $FC->get_and_set("cnt", sub { return ++$_[1]; }), 3, "get_and_set 2" );
 
 # Basic atomicness test
 
+my $loops = 5000;
 if (!$IsWin) {
 
-if (fork()) {
-  is( $FC->get_and_set("cnt", sub { sleep(2); return ++$_[1]; }), 4, "get_and_set 3");
-  sleep(1);
-  is( $FC->get("cnt"), 5, "get_and_set 4");
+$FC->set("cnt", 0);
+if (my $pid = fork()) {
+  for (1 .. $loops) {
+    $FC->get_and_set("cnt", sub { return ++$_[1]; });
+  }
+  waitpid($pid, 0);
+  is( $FC->get("cnt"), $loops*2, "get_and_set 1");
 
 } else {
-  sleep(1);
-  $FC->get_and_set("cnt", sub { return ++$_[1]; });
+  for (1 .. $loops) {
+    $FC->get_and_set("cnt", sub { return ++$_[1]; });
+  }
   CORE::exit(0);
 }
 
 }
 
+# Check get_and_remove()
+
+if (!$IsWin) {
+
+my $got_but_didnt_remove = 0;
+if (my $pid = fork()) {
+  for (1..$loops) {
+    $FC->set("cnt", "data");
+    my ($got, $did_remove) = $FC->get_and_remove("cnt");
+    # With atomicity, we should never get something out, but fail to remove something:
+    $got_but_didnt_remove++ if $got && !$did_remove;
+  }
+  waitpid($pid, 0);
+  is( $got_but_didnt_remove, 0, "get_and_remove 1" );
+} else {
+  for (1..$loops) {
+    $FC->remove("cnt");
+  }
+  CORE::exit(0);
+}
+
+}
