@@ -11,6 +11,7 @@
 
 
 MODULE = Cache::FastMmap::CImpl		PACKAGE = Cache::FastMmap::CImpl		
+PROTOTYPES: ENABLE
 
 SV *
 fc_new()
@@ -21,7 +22,7 @@ fc_new()
     cache = mmc_new();
 
     /* Create integer which is pointer to cache object */
-    obj_pnt = newSViv((IV)cache);
+    obj_pnt = newSViv(PTR2IV(cache));
 
     /* Create reference to integer value. This will be the object */
     obj = newRV_noinc((SV *)obj_pnt);
@@ -46,7 +47,7 @@ fc_set_param(obj, param, val)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj) );
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -73,7 +74,7 @@ fc_init(obj)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -101,7 +102,7 @@ fc_close(obj)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -132,7 +133,7 @@ fc_hash(obj, key);
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -167,7 +168,7 @@ fc_lock(obj, page);
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -196,7 +197,7 @@ fc_unlock(obj);
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -233,7 +234,7 @@ fc_read(obj, hash_slot, key)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -300,7 +301,7 @@ fc_write(obj, hash_slot, key, val, expire_seconds, in_flags)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -362,7 +363,7 @@ fc_delete(obj, hash_slot, key)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -406,7 +407,7 @@ fc_expunge(obj, mode, wb, len)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -487,7 +488,7 @@ fc_get_keys(obj, mode)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -573,7 +574,7 @@ fc_get(obj, key)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;
@@ -616,7 +617,7 @@ fc_set(obj, key, val)
     SV * key;
     SV * val;
   INIT:
-    mmap_cache * cache = (mmap_cache *)SvIV(SvRV(obj));
+    mmap_cache * cache = INT2PTR(mmap_cache *, SvIV(SvRV(obj)));
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
     MU32 hash_page, hash_slot, flags = 0;
@@ -631,7 +632,7 @@ fc_set(obj, key, val)
       croak("Object not initiliased correctly");
       XSRETURN_UNDEF;
     }
-    cache = (mmap_cache *)SvIV(obj);
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
     if (!cache) {
       croak("Object not created correctly");
       XSRETURN_UNDEF;

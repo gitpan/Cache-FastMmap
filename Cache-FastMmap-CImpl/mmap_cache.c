@@ -673,10 +673,11 @@ int mmc_write(
   if (cache->p_free_bytes >= kvlen) {
     MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
     MU32 now = (MU32)time(0);
+    MU32 expire_time = 0;
 
     /* Calculate expiry time */
     if (expire_seconds == (MU32)-1) expire_seconds = cache->expire_time;
-    MU32 expire_time = expire_seconds ? now + expire_seconds : 0;
+    expire_time = expire_seconds ? now + expire_seconds : 0;
 
     /* Store info into slot */
     S_LastAccess(base_det) = now;

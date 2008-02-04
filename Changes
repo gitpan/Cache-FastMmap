@@ -1,5 +1,17 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.25  Mon Feb 04 13:20 2008
+  - Fix multi_set bug and add test
+    (http://rt.cpan.org/Ticket/Display.html?id=32895)
+  - Test share_file is not a reference
+    (http://rt.cpan.org/Ticket/Display.html?id=32252)
+  - Fix C variable declaration error
+    (http://rt.cpan.org/Ticket/Display.html?id=31223)
+  - Fix compile warnings in FreeBSD
+    (http://rt.cpan.org/Ticket/Display.html?id=31900)
+  - Thanks to all the people that contributed
+     to the above bugs
+
 1.24  Mon Oct 22 13:15 2007
   - Add atomic get_and_remove() method thanks to
       Darrell Bishop

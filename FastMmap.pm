@@ -280,7 +280,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.24';
+our $VERSION = '1.25';
 
 use Cache::FastMmap::CImpl;
 
@@ -467,6 +467,7 @@ sub new {
     $share_file = ($^O eq "MSWin32" ? "c:\\sharefile" : "/tmp/sharefile");
     $share_file .= "-" . $$ . "-" . time;
   }
+  !ref($share_file) || die "share_file argument was a reference";
   $Self->{share_file} = $share_file;
 
   my $init_file = $Args{init_file} || 0;
@@ -929,13 +930,17 @@ sub multi_get {
   return \%KVs;
 }
 
-=item I<multi_set($PageKey, { $Key1 => $Value1, $Key2 => $Value2, ... })>
+=item I<multi_set($PageKey, { $Key1 => $Value1, $Key2 => $Value2, ... }, [ \%Options ])>
 
 Store specified key/value pair into cache
 
 =cut
 sub multi_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Get opts, make compatiable with Cache::Cache interface
+  my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
+  my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
 
   # Hash page key value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
@@ -956,7 +961,7 @@ sub multi_set {
 
     # Now hash key and store into page
     (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
-    $Cache->fc_write($HashSlot, $FinalKey, $Val, 0);
+    $Cache->fc_write($HashSlot, $FinalKey, $Val, $expire_seconds, 0);
   }
 
   # Unlock page

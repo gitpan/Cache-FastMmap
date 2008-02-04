@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 52;
+use Test::More tests => 56;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -99,3 +99,13 @@ is($keys{bcd}->{value}, "234", "get_keys 9");
 is($keys{cde}->{value}, "345", "get_keys 10");
 is($keys{"def\x{263A}"}->{value}, "456\x{263A}", "get_keys 11");
 
+# basic multi_* tests
+
+$FC->multi_set("page1", { k1 => 1, k2 => 2 });
+$FC->multi_set("page2", { k3 => 1, k4 => 2 });
+my $R = $FC->multi_get("page1", [ qw(k1 k2) ]);
+is($R->{k1}, 1, "multi_get 1");
+is($R->{k2}, 2, "multi_get 2");
+$R = $FC->multi_get("page2", [ qw(k3 k4) ]);
+is($R->{k3}, 1, "multi_get 3");
+is($R->{k4}, 2, "multi_get 4");
