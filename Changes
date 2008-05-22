@@ -1,5 +1,13 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.26  Thu May 22 14:50 2008
+  - Check for write failure when creating file
+      thanks to Sam Vilain
+  - Check for $ENV{TMP_DIR}
+      thanks to Sam Vilain
+  - Add compress option
+  - Add basic statistics gathering
+
 1.25  Mon Feb 04 13:20 2008
   - Fix multi_set bug and add test
     (http://rt.cpan.org/Ticket/Display.html?id=32895)

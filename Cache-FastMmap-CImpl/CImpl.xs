@@ -384,6 +384,64 @@ fc_delete(obj, hash_slot, key)
 
 
 void
+fc_get_page_details(obj)
+    SV * obj;
+  INIT:
+    mmap_cache * cache;
+    MU32 nreads = 0, nreadhits = 0;
+
+    if (!SvROK(obj)) {
+      croak("Object not reference");
+      XSRETURN_UNDEF;
+    }
+    obj = SvRV(obj);
+    if (!SvIOKp(obj)) {
+      croak("Object not initiliased correctly");
+      XSRETURN_UNDEF;
+    }
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
+    if (!cache) {
+      croak("Object not created correctly");
+      XSRETURN_UNDEF;
+    }
+
+
+  PPCODE:
+    mmc_get_page_details(cache, &nreads, &nreadhits);
+
+    XPUSHs(sv_2mortal(newSViv((IV)nreads)));
+    XPUSHs(sv_2mortal(newSViv((IV)nreadhits)));
+
+
+NO_OUTPUT void
+fc_reset_page_details(obj)
+    SV * obj;
+  INIT:
+    mmap_cache * cache;
+    MU32 nreads = 0, nreadhits = 0;
+
+    if (!SvROK(obj)) {
+      croak("Object not reference");
+      XSRETURN_UNDEF;
+    }
+    obj = SvRV(obj);
+    if (!SvIOKp(obj)) {
+      croak("Object not initiliased correctly");
+      XSRETURN_UNDEF;
+    }
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
+    if (!cache) {
+      croak("Object not created correctly");
+      XSRETURN_UNDEF;
+    }
+
+
+  CODE:
+    mmc_reset_page_details(cache);
+
+
+
+void
 fc_expunge(obj, mode, wb, len)
     SV * obj;
     int mode;
@@ -658,5 +716,30 @@ fc_set(obj, key, val)
     mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, -1, flags);
 
     mmc_unlock(cache);
+
+
+NO_OUTPUT void
+fc_dump_page(obj);
+    SV * obj;
+  INIT:
+    mmap_cache * cache;
+
+    if (!SvROK(obj)) {
+      croak("Object not reference");
+      XSRETURN_UNDEF;
+    }
+    obj = SvRV(obj);
+    if (!SvIOKp(obj)) {
+      croak("Object not initiliased correctly");
+      XSRETURN_UNDEF;
+    }
+    cache = INT2PTR(mmap_cache *, SvIV(obj));
+    if (!cache) {
+      croak("Object not created correctly");
+      XSRETURN_UNDEF;
+    }
+
+  CODE:
+    _mmc_dump_page(cache);
 
 

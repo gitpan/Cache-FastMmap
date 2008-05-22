@@ -47,6 +47,8 @@ struct mmap_cache {
   MU32    p_old_slots;
   MU32    p_free_data;
   MU32    p_free_bytes;
+  MU32    p_n_reads;
+  MU32    p_n_read_hits;
 
   int    p_changed;
 
@@ -61,6 +63,7 @@ struct mmap_cache {
   /* Cache general details */
   MU32    start_slots;
   MU32    expire_time;
+  int     enable_stats;
 
   /* Share mmap file details */
   int    fh;
@@ -81,19 +84,6 @@ struct mmap_cache_it {
   MU32 *       slot_ptr_end;
 };
 
-
-/* Internal functions */
-int _mmc_set_error(mmap_cache *, int, char *, ...);
-void _mmc_init_page(mmap_cache *, MU32);
-
-MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
-void _mmc_delete_slot(mmap_cache * , MU32 *);
-
-int _mmc_check_expunge(mmap_cache * , int);
-
-int  _mmc_test_page(mmap_cache *);
-int  _mmc_dump_page(mmap_cache *);
-
 /* Macros to access page entries */
 #define PP(p) ((MU32 *)p)
 
@@ -103,6 +93,8 @@ int  _mmc_dump_page(mmap_cache *);
 #define P_OldSlots(p) (*(PP(p)+3))
 #define P_FreeData(p) (*(PP(p)+4))
 #define P_FreeBytes(p) (*(PP(p)+5))
+#define P_NReads(p) (*(PP(p)+6))
+#define P_NReadHits(p) (*(PP(p)+7))
 
 #define P_HEADERSIZE 32
 
@@ -166,6 +158,8 @@ mmap_cache * mmc_new() {
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
 
+  cache->enable_stats = 0;
+
   cache->last_error = 0;
 
   return cache;
@@ -186,6 +180,8 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
     cache->share_file = val;
   } else if (!strcmp(param, "start_slots")) {
     cache->start_slots = atoi(val);
+  } else if (!strcmp(param, "enable_stats")) {
+    cache->enable_stats = atoi(val);
   } else {
     _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
     return -1;
@@ -270,7 +266,15 @@ int mmc_init(mmap_cache * cache) {
 
     memset(tmp, 0, cache->c_page_size);
     for (i = 0; i < cache->c_num_pages; i++) {
-      write(res, tmp, cache->c_page_size);
+      int written = write(res, tmp, cache->c_page_size);
+      if (written < 0) {
+    _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
+ return -1;
+      }
+      if (written < cache->c_page_size) {
+    _mmc_set_error(cache, errno, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
+ return -1;
+      }
     }
     free(tmp);
 
@@ -468,6 +472,8 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_old_slots = P_OldSlots(p_ptr);
   cache->p_free_data = P_FreeData(p_ptr);
   cache->p_free_bytes = P_FreeBytes(p_ptr);
+  cache->p_n_reads = P_NReads(p_ptr);
+  cache->p_n_read_hits = P_NReadHits(p_ptr);
 
   /* Reality check */
   if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size)
@@ -520,6 +526,8 @@ int mmc_unlock(mmap_cache * cache) {
     P_OldSlots(p_ptr) = cache->p_old_slots;
     P_FreeData(p_ptr) = cache->p_free_data;
     P_FreeBytes(p_ptr) = cache->p_free_bytes;
+    P_NReads(p_ptr) = cache->p_n_reads;
+    P_NReadHits(p_ptr) = cache->p_n_read_hits;
   }
 
   /* Test before unlocking */
@@ -588,6 +596,13 @@ int mmc_read(
   void **val_ptr, int *val_len,
   MU32 *flags
 ) {
+
+  /* Increase read count for page */
+  if (cache->enable_stats) {
+    cache->p_changed = 1;
+    cache->p_n_reads++;
+  }
+
   /* Search slots for key */
   MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 0);
 
@@ -625,6 +640,10 @@ int mmc_read(
     *flags = S_Flags(base_det);
     *val_len = S_ValLen(base_det);
     *val_ptr = S_ValPtr(base_det);
+
+    /* Increase read hit count */
+    if (cache->enable_stats)
+      cache->p_n_read_hits++;
 
     return 0;
   }
@@ -994,6 +1013,32 @@ int mmc_do_expunge(
 }
 
 /*
+ * void mmc_get_page_details(mmap_cache * cache, MU32 * n_reads, MU32 * n_read_hits)
+ *
+ * Return details about the current locked page. Currently just
+ * number of reads and number of reads that hit
+ *
+*/
+void mmc_get_page_details(mmap_cache * cache, MU32 * n_reads, MU32 * n_read_hits) {
+  *n_reads = cache->p_n_reads;
+  *n_read_hits = cache->p_n_read_hits;
+  return;
+}
+
+/*
+ * void mmc_reset_page_details(mmap_cache * cache)
+ *
+ * Reset any page details (currently just read hits)
+ *
+*/
+void mmc_reset_page_details(mmap_cache * cache) {
+  cache->p_n_reads = 0;
+  cache->p_n_read_hits = 0;
+  cache->p_changed = 1;
+  return;
+}
+
+/*
  * mmap_cache_it * mmc_iterate_new(mmap_cache * cache)
  *
  * Setup a new iterator to iterate over stored items
@@ -1242,6 +1287,8 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
     P_OldSlots(p_ptr) = 0;
     P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * 4;
     P_FreeBytes(p_ptr) = cache->c_page_size - P_FreeData(p_ptr);
+    P_NReads(p_ptr) = 0;
+    P_NReadHits(p_ptr) = 0;
   }
 }
 
@@ -1319,10 +1366,10 @@ int  _mmc_test_page(mmap_cache * cache) {
       MU32 kvlen = S_SlotLen(base_det);
       ROUNDLEN(kvlen);
 
-      ASSERT(last_access > 1000000000 && last_access < 1200000000);
-      if (!(last_access > 1000000000 && last_access < 1200000000)) return 0;
-      ASSERT(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1200000000));
-      if (!(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1200000000))) return 0;
+      ASSERT(last_access > 1000000000 && last_access < 1500000000);
+      if (!(last_access > 1000000000 && last_access < 1500000000)) return 0;
+      ASSERT(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1500000000));
+      if (!(expire_time == 0 || (expire_time > 1000000000 && expire_time < 1500000000))) return 0;
 
       ASSERT(key_len >= 0 && key_len < data_size);
       if (!(key_len >= 0 && key_len < data_size)) return 0;
@@ -1405,9 +1452,9 @@ int _mmc_dump_page(mmap_cache * cache) {
         S_SlotHash(base_det), S_Flags(base_det));
 
       /* Get data */
-      memcpy(S_KeyPtr(base_det), key, key_len > 256 ? 256 : key_len);
+      memcpy(key, S_KeyPtr(base_det), key_len > 256 ? 256 : key_len);
       key[key_len] = 0;
-      memcpy(S_ValPtr(base_det), val, val_len > 256 ? 256 : val_len);
+      memcpy(val, S_ValPtr(base_det), val_len > 256 ? 256 : val_len);
       val[val_len] = 0;
 
       printf("  K=%s, V=%s\n", key, val);

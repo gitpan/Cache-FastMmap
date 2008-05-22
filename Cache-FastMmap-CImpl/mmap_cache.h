@@ -103,7 +103,10 @@
  * 
  * - FreeBytes (4 bytes) - Bytes left in free data area
  * 
- * - Reserved (8 bytes)
+ * - N Reads (4 bytes) - Number of reads performed on this page
+ *
+ * - N Read Hits (4 bytes) - Number of reads on this page that have hit
+ *   something in the cache
  * 
  * - Slots (4 bytes * NumSlots) - Hash slots
  *
@@ -205,7 +208,21 @@ mmap_cache_it * mmc_iterate_new(mmap_cache *);
 MU32 * mmc_iterate_next(mmap_cache_it *);
 void mmc_iterate_close(mmap_cache_it *);
 
-/* Retrieve details of a cache entry */
+/* Retrieve details of a cache page/entry */
 void mmc_get_details(mmap_cache *, MU32 *, void **, int *, void **, int *, MU32 *, MU32 *, MU32 *);
+void mmc_get_page_details(mmap_cache * cache, MU32 * nreads, MU32 * nreadhits);
+void mmc_reset_page_details(mmap_cache * cache);
+
+/* Internal functions */
+int _mmc_set_error(mmap_cache *, int, char *, ...);
+void _mmc_init_page(mmap_cache *, MU32);
+
+MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
+void _mmc_delete_slot(mmap_cache * , MU32 *);
+
+int _mmc_check_expunge(mmap_cache * , int);
+
+int  _mmc_test_page(mmap_cache *);
+int  _mmc_dump_page(mmap_cache *);
 
 

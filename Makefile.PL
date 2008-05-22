@@ -7,10 +7,10 @@ WriteMakefile(
     'ABSTRACT_FROM' => 'FastMmap.pm',
     'AUTHOR'        => 'Rob Mueller <cpan@robm.fastmail.fm>',
     'PREREQ_PM'     => {
-      'Storable' => 0
+      'Storable' => 0,
     },
     'DIR'           => [
       'Cache-FastMmap-CImpl'
     ],
-#	    'OPTIMIZE' => '-g -DDEBUG',
+	    'OPTIMIZE' => '-g -DDEBUG',
 );

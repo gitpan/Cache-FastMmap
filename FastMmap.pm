@@ -196,12 +196,10 @@ back using a number of parameters in /proc/sys/vm
 
 How you tune these depends heavily on your setup.
 
-As an interesting point, at least on our setup, we have observed
-a signficant change in behaviour somewhere between Linux 2.6.16 and
-2.6.20. We found that certain machines that were fine under 2.6.16 were
-suddenly experiencing a lot more IO under 2.6.20 that we were able to
-attribute to the Cache::FastMmap files, even though we hadn't changed
-any kernel parameters.
+As an interesting point, if you use a highmem linux kernel, a change
+between 2.6.16 and 2.6.20 made the kernel flush memory a LOT more.
+There's details in this kernel mailing list thread:
+L<http://www.uwsg.iu.edu/hypermail/linux/kernel/0711.3/0804.html>
 
 In most cases, people are not actually concerned about the persistence
 of data in the cache, and so are happy to disable writing of any cache
@@ -220,6 +218,11 @@ so making it 1G in size doesn't actually use 1G of memory, it only uses
 as much as the cache files we put on it. In all cases, we ensure that
 we never run out of real memory, so the cache files effectively act 
 just as named access points to shared memory.
+
+Some people have suggested using anonymous mmaped memory. Unfortunately
+we need a file descriptor to do the fcntl locking on, so we'd have
+to create a separate file on a filesystem somewhere anyway. It seems
+easier to just create an explicit "tmpfs" filesystem.
 
 =head1 PAGE SIZE AND KEY/VALUE LIMITS
 
@@ -280,7 +283,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.25';
+our $VERSION = '1.26';
 
 use Cache::FastMmap::CImpl;
 
@@ -315,6 +318,26 @@ the the cache file in an inconsistent state.
 
 Store values as raw binary data rather than using Storable to free/thaw
 data structures (default: 0)
+
+=item * B<compress>
+
+Compress the value (but not the key) before storing into the cache. If
+you set this to 1, the module will attempt to require the Compress::Zlib
+module and then use the memGzip() function on the value data before
+storing into the cache, and memGunzip() when retrieving data from the
+cache. Some initial testing shows that the uncompressing tends to be
+very fast, though the compressing can be quite slow, so it's probably
+best to use this option only if you know values in the cache are long
+lived and have a high hit rate. (default: 0)
+
+=item * B<enable_stats>
+
+Enable some basic statistics capturing. When enabled, every read to
+the cache is counted, and every read to the cache that finds a value
+in the cache is also counted. You can then retrieve these values
+via the get_statistics() call. This causes every read action to
+do a write on a page, which can cause some more IO, so it's
+disabled by default. (default: 0)
 
 =item * B<expire_time>
 
@@ -464,14 +487,16 @@ sub new {
   # Work out cache file and whether to init
   my $share_file = $Args{share_file};
   if (!$share_file) {
-    $share_file = ($^O eq "MSWin32" ? "c:\\sharefile" : "/tmp/sharefile");
+    my $tmp_dir = $ENV{TMPDIR} || "/tmp";
+    $share_file = ($^O eq "MSWin32" ? "c:\\sharefile" : "$tmp_dir/sharefile");
     $share_file .= "-" . $$ . "-" . time;
   }
   !ref($share_file) || die "share_file argument was a reference";
   $Self->{share_file} = $share_file;
 
-  my $init_file = $Args{init_file} || 0;
-  my $test_file = $Args{test_file} || 0;
+  my $init_file = $Args{init_file} ? 1 : 0;
+  my $test_file = $Args{test_file} ? 1 : 0;
+  my $enable_stats = $Args{enable_stats} ? 1 : 0;
 
   # Worth out unlink default if not specified
   if (!exists $Args{unlink_on_exit}) {
@@ -485,6 +510,15 @@ sub new {
   if (!$raw_values) {
     eval "use Storable qw(freeze thaw); 1;"
       || die "Could not load Storable module: $@";
+  }
+
+  # Compress stored values?
+  my $compress = $Self->{compress} = int($Args{compress} || 0);
+
+  # Need Compress::Zlib module if using compression
+  if ($compress) {
+    eval "use Compress::Zlib; 1;"
+      || die "Could not load Compress::Zlib module: $@";
   }
 
   # Work out expiry time in seconds
@@ -545,8 +579,8 @@ sub new {
     = @Args{qw(context read_cb write_cb delete_cb)};
   @$Self{qw(cache_not_found allow_recursive write_back)}
     = (@Args{qw(cache_not_found allow_recursive)}, $write_back);
-  @$Self{qw(empty_on_exit unlink_on_exit)}
-    = @Args{qw(empty_on_exit unlink_on_exit)};
+  @$Self{qw(empty_on_exit unlink_on_exit enable_stats)}
+    = (@Args{qw(empty_on_exit unlink_on_exit)}, $enable_stats);
 
   # Save pid
   $Self->{pid} = $$;
@@ -570,6 +604,7 @@ sub new {
   $Cache->fc_set_param('expire_time', $expire_time);
   $Cache->fc_set_param('share_file', $share_file);
   $Cache->fc_set_param('start_slots', $start_slots);
+  $Cache->fc_set_param('enable_stats', $enable_stats);
 
   # And initialise it
   $Cache->fc_init();
@@ -622,6 +657,7 @@ sub get {
 
       # If not using raw values, use freeze() to turn data 
       $Val = freeze(\$Val) if !$Self->{raw_values};
+      $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
 
       # Get key/value len (we've got 'use bytes'), and do expunge check to
       #  create space if needed
@@ -637,9 +673,8 @@ sub get {
   $Cache->fc_unlock() unless $_[2] && $_[2]->{skip_unlock};
 
   # If not using raw values, use thaw() to turn data back into object
-  if (!$Self->{raw_values}) {
-    $Val = ${thaw($Val)} if defined $Val;
-  }
+  $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
+  $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
 
   return $Val;
 }
@@ -662,6 +697,7 @@ sub set {
 
   # If not using raw values, use freeze() to turn data 
   my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
+  $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
 
   # Get opts, make compatiable with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
@@ -854,12 +890,50 @@ sub get_keys {
 
   my $Mode = $_[1] || 0;
   return $Cache->fc_get_keys($Mode)
-    if $Mode <= 1 || ($Mode == 2 && $Self->{raw_values});
+    if $Mode <= 1 || ($Mode == 2 && $Self->{raw_values} && !$Self->{compress});
 
   # If we're getting values as well, and they're not raw, unfreeze them
   my @Details = $Cache->fc_get_keys(2);
-  for (@Details) { $_->{value} = ${thaw($_->{value})}; }
+  for (@Details) {
+    if (defined(my $Value = $_->{value})) {
+      $Value = Compress::Zlib::memGunzip($Value) if $Self->{compress};
+      $Value = ${thaw($Value)} if !$Self->{raw_values};
+      $_->{value} = $Value;
+    }
+  }
   return @Details;
+}
+
+=item I<get_statistics($Clear)>
+
+Returns a two value list of (nreads, nreadhits). This
+only works if you passed enable_stats in the constructor
+
+nreads is the total number of read attempts done on the
+cache since it was created
+
+nreadhits is the total number of read attempts done on
+the cache since it was created that found the key/value
+in the cache
+
+If $Clear is true, the values are reset immediately after
+they are retrieved
+
+=cut
+sub get_statistics {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+  my $Clear = $_[1];
+
+  my ($NReads, $NReadHits) = (0, 0);
+  for (0 .. $Self->{num_pages}-1) {
+    $Cache->fc_lock($_);
+    my ($PNReads, $PNReadHits) = $Cache->fc_get_page_details();
+    $NReads += $PNReads;
+    $NReadHits += $PNReadHits;
+    $Cache->fc_reset_page_details() if $Clear;
+    $Cache->fc_unlock();
+  }
+  return ($NReads, $NReadHits);
 }
 
 =item I<multi_get($PageKey, [ $Key1, $Key2, ... ])>
@@ -918,7 +992,8 @@ sub multi_get {
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
-    $Val = ${thaw($Val)} unless $Self->{raw_values};
+    $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
+    $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
 
     # Save to return
     $KVs{$_} = $Val;
@@ -952,6 +1027,7 @@ sub multi_set {
 
     # If not using raw values, use freeze() to turn data 
     $Val = freeze(\$Val) unless $Self->{raw_values};
+    $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
 
     # Get key/value len (we've got 'use bytes'), and do expunge check to
     #  create space if needed
@@ -961,7 +1037,7 @@ sub multi_set {
 
     # Now hash key and store into page
     (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
-    $Cache->fc_write($HashSlot, $FinalKey, $Val, $expire_seconds, 0);
+    my $DidStore = $Cache->fc_write($HashSlot, $FinalKey, $Val, $expire_seconds, 0);
   }
 
   # Unlock page
@@ -1074,6 +1150,9 @@ This ensures that different runs/processes don't interfere with each other, but
 means you may not connect up to the file you expect. You should be choosing an
 explicit name in most cases.
 
+On Unix systems, you can pass in the environment variable TMPDIR to
+override the default directory of /tmp
+
 =item *
 
 The new option unlink_on_exit defaults to true if you pass a filename for the
@@ -1103,7 +1182,7 @@ Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2007 by FastMail IP Partners
+Copyright (C) 2003-2008 by FastMail IP Partners
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
