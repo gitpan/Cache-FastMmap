@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.27  Wed Jun 18 17:15 2008
+  - Fix non-ansi C code
+  - Remove debug flags
+
 1.26  Thu May 22 14:50 2008
   - Check for write failure when creating file
       thanks to Sam Vilain

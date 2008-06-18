@@ -596,6 +596,7 @@ int mmc_read(
   void **val_ptr, int *val_len,
   MU32 *flags
 ) {
+  MU32 * slot_ptr;
 
   /* Increase read count for page */
   if (cache->enable_stats) {
@@ -604,7 +605,7 @@ int mmc_read(
   }
 
   /* Search slots for key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 0);
+  slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 0);
 
   /* Did we find a value? */
   if (!slot_ptr || *slot_ptr == 0) {
