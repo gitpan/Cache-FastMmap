@@ -283,7 +283,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.27';
+our $VERSION = '1.28';
 
 use Cache::FastMmap::CImpl;
 
@@ -748,8 +748,13 @@ can just use:
 
   $Cache->get_and_set($Key, sub { return ++$_[1]; });
 
-The return value from this function is the new value stored back
-into the cache.
+In scalar context, the return value from this function is the *new* value
+stored back into the cache.
+
+In list context, a two item array is returned; the new value stored
+back into the cache and a boolean that's true if the value was stored
+in the cache, false otherwise. See the PAGE SIZE AND KEY/VALUE LIMITS
+section for more details.
 
 Notes:
 
@@ -763,7 +768,7 @@ operations lock the page and you may end up with a dead lock!
 =item *
 
 If your sub does a die/throws an exception, this will be caught
-to allow the pack to be unlocked, and then rethrown (1.15 onwards)
+to allow the page to be unlocked, and then rethrown (1.15 onwards)
 
 =back
 
@@ -774,10 +779,10 @@ sub get_and_set {
   my $Value = $Self->get($_[1], { skip_unlock => 1 });
   eval { $Value = $_[2]->($_[1], $Value); };
   my $Err = $@;
-  $Self->set($_[1], $Value, { skip_lock => 1 });
+  my $DidStore = $Self->set($_[1], $Value, { skip_lock => 1 });
   die $Err if $Err;
 
-  return $Value;
+  return wantarray ? ($Value, $DidStore) : $Value;
 }
 
 =item I<remove($Key, [ \%Options ])>

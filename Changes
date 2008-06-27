@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.28 Fri Jun 27 11:05 2008
+  - get_and_set() returns new value + didstore boolean
+     if called in list context
+
 1.27  Wed Jun 18 17:15 2008
   - Fix non-ansi C code
   - Remove debug flags
