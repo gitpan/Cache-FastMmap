@@ -1,13 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#if !defined(WIN32) || defined(CYGWIN)
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <fcntl.h>
-#include <time.h>
-#include "mmap_cache.h"
+#endif
 
 #ifdef DEBUG
 #define ASSERT(x) assert(x)
@@ -16,6 +15,23 @@
 #define ASSERT(x)
 #endif
 
+#ifndef WIN32
+#include <sys/wait.h>
+#else
+#include <stdlib.h>
+#include <stdio.h>
+#include <windows.h>
+double last_rand;
+double drand48(void) {
+    last_rand = rand() / (double)(RAND_MAX+1);
+    
+    ASSERT(last_rand < 1);
+    return last_rand;
+}
+#endif
+
+#include <time.h>
+#include "mmap_cache.h"
 
 void * Get(mmap_cache * cache, void * key_ptr, int key_len, int * val_len) {
   int found;
@@ -62,7 +78,7 @@ void Set(mmap_cache * cache, void * key_ptr, int key_len, void * val_ptr, int va
   }
 
   /* Get value data pointer */
-  mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, flags);
+  mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, 60, flags);
 
   mmc_unlock(cache);
 }
@@ -198,6 +214,9 @@ void kl_free(key_list * kl) {
 int urand_fh = 0;
 
 void RandSeed() {
+#ifdef WIN32
+	//randomize();
+#else
   char buf[8];
 
   if (!urand_fh) {
@@ -207,6 +226,7 @@ void RandSeed() {
   read(urand_fh, buf, 8);
 
   srand48(*(long int *)buf);
+#endif
 }
 
 int RepeatMixTests(mmap_cache * cache, double ratio, key_list * kl) {
@@ -282,6 +302,7 @@ void IteratorTests(mmap_cache * cache) {
 }
 
 int ForkTests(mmap_cache * cache, key_list * kl) {
+#ifndef WIN32
   int pid, j, k, kid, kids[20], nkids = 0, status;
   struct timeval timeout = { 0, 1000 };
 
@@ -305,6 +326,8 @@ int ForkTests(mmap_cache * cache, key_list * kl) {
   } while (kid > 0 && nkids);
 
   return 0;
+#else
+#endif
 }
 
 

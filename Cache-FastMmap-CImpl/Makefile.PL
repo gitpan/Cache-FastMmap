@@ -7,6 +7,6 @@ WriteMakefile(
     'VERSION_FROM'  => 'CImpl.pm',
     'LIBS'          => [''],
     'INC'           => '-I.',
-    'OBJECT'        => 'CImpl.o mmap_cache.o',
+    'OBJECT'        => 'CImpl.o mmap_cache.o ' . ($^O eq 'MSWin32' ? 'win32.o' : 'unix.o'),
 #	    'DEFINE'        => '-DDEBUG',
 );

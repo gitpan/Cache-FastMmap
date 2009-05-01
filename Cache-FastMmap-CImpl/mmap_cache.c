@@ -16,112 +16,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <time.h>
 #include <errno.h>
 #include <stdarg.h>
 #include "mmap_cache.h"
-
-#ifdef DEBUG
-#define ASSERT(x) assert(x)
-#include <assert.h>
-#else
-#define ASSERT(x)
-#endif
-
-/* Cache structure */
-struct mmap_cache {
-
-  /* Current page details */
-  void * p_base;
-  MU32 * p_base_slots;
-  MU32    p_cur;
-  MU32    p_offset;
-
-  MU32    p_num_slots;
-  MU32    p_free_slots;
-  MU32    p_old_slots;
-  MU32    p_free_data;
-  MU32    p_free_bytes;
-  MU32    p_n_reads;
-  MU32    p_n_read_hits;
-
-  int    p_changed;
-
-  /* General page details */
-  MU32    c_num_pages;
-  MU32    c_page_size;
-  MU32    c_size;
-
-  /* Pointer to mmapped area */
-  void * mm_var;
-
-  /* Cache general details */
-  MU32    start_slots;
-  MU32    expire_time;
-  int     enable_stats;
-
-  /* Share mmap file details */
-  int    fh;
-  char * share_file;
-  int    init_file;
-  int    test_file;
-  int    cache_not_found;
-
-  /* Last error string */
-  char * last_error;
-
-};
-
-struct mmap_cache_it {
-  mmap_cache * cache;
-  MU32         p_cur;
-  MU32 *       slot_ptr;
-  MU32 *       slot_ptr_end;
-};
-
-/* Macros to access page entries */
-#define PP(p) ((MU32 *)p)
-
-#define P_Magic(p) (*(PP(p)+0))
-#define P_NumSlots(p) (*(PP(p)+1))
-#define P_FreeSlots(p) (*(PP(p)+2))
-#define P_OldSlots(p) (*(PP(p)+3))
-#define P_FreeData(p) (*(PP(p)+4))
-#define P_FreeBytes(p) (*(PP(p)+5))
-#define P_NReads(p) (*(PP(p)+6))
-#define P_NReadHits(p) (*(PP(p)+7))
-
-#define P_HEADERSIZE 32
-
-/* Macros to access cache slot entries */
-#define SP(s) ((MU32 *)s)
-
-/* Offset pointer 'p' by 'o' bytes */
-#define PTR_ADD(p,o) ((void *)((char *)p + o))
-
-/* Given a data pointer, get key len, value len or combined len */
-#define S_Ptr(b,s)      ((MU32 *)PTR_ADD(b, s))
-
-#define S_LastAccess(s) (*(s+0))
-#define S_ExpireTime(s) (*(s+1))
-#define S_SlotHash(s)   (*(s+2))
-#define S_Flags(s)      (*(s+3))
-#define S_KeyLen(s)     (*(s+4))
-#define S_ValLen(s)     (*(s+5))
-
-#define S_KeyPtr(s)     ((void *)(s+6))
-#define S_ValPtr(s)     (PTR_ADD((void *)(s+6), S_KeyLen(s)))
-
-/* Length of slot data including key and value data */
-#define S_SlotLen(s)    (sizeof(MU32)*6 + S_KeyLen(s) + S_ValLen(s))
-#define KV_SlotLen(k,v) (sizeof(MU32)*6 + k + v)
-/* Found key/val len to nearest 4 bytes */
-#define ROUNDLEN(l)     ((l) += 3 - (((l)-1) & 3))
+#include "mmap_cache_internals.h"
 
 /* Default values for a new cache */
 char * def_share_file = "/tmp/sharefile";
@@ -154,7 +53,7 @@ mmap_cache * mmc_new() {
   cache->expire_time = def_expire_time;
 
   cache->fh = 0;
-  cache->share_file = def_share_file;
+  cache->share_file = _mmc_get_def_share_filename(cache);
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
 
@@ -211,10 +110,8 @@ int mmc_get_param(mmap_cache * cache, char * param) {
  * 
 */
 int mmc_init(mmap_cache * cache) {
-  int i, res, fh, do_init;
-  void * mm_var, * tmp;
+  int i, do_init;
   MU32 c_num_pages, c_page_size, c_size, start_slots;
-  struct stat statbuf;
 
   /* Need a share file */
   if (!cache->share_file) {
@@ -234,92 +131,18 @@ int mmc_init(mmap_cache * cache) {
 
   cache->c_size = c_size = c_num_pages * c_page_size;
 
-  /* Check if file exists */
-  res = stat(cache->share_file, &statbuf);
-
-  /* Remove if different size or remove requested */
-  if (!res &&
-      (cache->init_file || (statbuf.st_size != c_size))) {
-    res = remove(cache->share_file);
-    if (res == -1 && errno != ENOENT) {
-      _mmc_set_error(cache, errno, "Unlink of existing share file %s failed", cache->share_file);
-      return -1;
-    }
-  }
-
-  /* Create file if it doesn't exist */
-  do_init = 0;
-  res = stat(cache->share_file, &statbuf);
-  if (res == -1) {
-    res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, 0640);
-    if (res == -1) {
-      _mmc_set_error(cache, errno, "Create of share file %s failed", cache->share_file);
-      return -1;
-    }
-
-    /* Fill file with 0's */
-    tmp = malloc(cache->c_page_size);
-    if (!tmp) {
-      _mmc_set_error(cache, errno, "Malloc of tmp space failed");
-      return -1;
-    }
-
-    memset(tmp, 0, cache->c_page_size);
-    for (i = 0; i < cache->c_num_pages; i++) {
-      int written = write(res, tmp, cache->c_page_size);
-      if (written < 0) {
-    _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
- return -1;
-      }
-      if (written < cache->c_page_size) {
-    _mmc_set_error(cache, errno, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
- return -1;
-      }
-    }
-    free(tmp);
-
-    /* Later on initialise page structures */
-    do_init = 1;
-
-    close(res);
-  }
-
-  /* Open for reading/writing */
-  fh = open(cache->share_file, O_RDWR);
-  if (fh == -1) {
-    _mmc_set_error(cache, errno, "Open of share file %s failed", cache->share_file);
-    return -1;
-  }
+  if ( mmc_open_cache_file(cache, &do_init) == -1) return -1;
 
   /* Map file into memory */
-  mm_var = mmap(0, c_size, PROT_READ | PROT_WRITE, MAP_SHARED, fh, 0);
-  if (mm_var == (void *)MAP_FAILED) {
-    close(fh);
-    _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
-    return -1;
-  }
-
-  cache->fh = fh;
-  cache->mm_var = mm_var;
+  if ( mmc_map_memory(cache) == -1) return -1;
 
   /* Initialise pages if new file */
   if (do_init) {
     _mmc_init_page(cache, -1);
     
     /* Unmap and re-map to stop gtop telling us our memory usage is up */
-    res = munmap(cache->mm_var, cache->c_size);
-    if (res == -1) {
-      _mmc_set_error(cache, errno, "Munmap of shared file %s failed", cache->share_file);
-      return -1;
-    }
-
-    mm_var = mmap(0, c_size, PROT_READ | PROT_WRITE, MAP_SHARED, fh, 0);
-    if (mm_var == (void *)MAP_FAILED) {
-      close(fh);
-      _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
-      return -1;
-    }
-    cache->mm_var = mm_var;
+    if ( mmc_unmap_memory(cache) == -1) return -1;
+    if ( mmc_map_memory(cache) == -1) return -1;
   }
 
   /* Test pages in file if asked */
@@ -382,12 +205,12 @@ int mmc_close(mmap_cache *cache) {
 
   /* Close file */
   if (cache->fh) {
-    close(cache->fh);
+    mmc_close_fh(cache);
   }
 
   /* Unmap memory */
   if (cache->mm_var) {
-    res = munmap(cache->mm_var, cache->c_size);
+    res = mmc_unmap_memory(cache);
     if (res == -1) {
       _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
       return -1;
@@ -415,10 +238,7 @@ char * mmc_error(mmap_cache * cache) {
  *
 */
 int mmc_lock(mmap_cache * cache, MU32 p_cur) {
-  struct flock lock;
   MU32 p_offset;
-  int old_alarm, alarm_left = 10;
-  int lock_res = -1;
   void * p_ptr;
 
   /* Check not already locked */
@@ -428,40 +248,8 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   /* Setup page details */
   p_offset = p_cur * cache->c_page_size;
   p_ptr = PTR_ADD(cache->mm_var, p_offset);
- 
-  /* Setup fcntl locking structure */
-  lock.l_type = F_WRLCK;
-  lock.l_whence = SEEK_SET;
-  lock.l_start = p_offset;
-  lock.l_len = cache->c_page_size;
 
-  old_alarm = alarm(alarm_left);
-
-  while (lock_res != 0) {
-
-    /* Lock the page (block till done, signal, or timeout) */
-    lock_res = fcntl(cache->fh, F_SETLKW, &lock);
-
-    /* Continue immediately if success */
-    if (lock_res == 0) {
-      alarm(old_alarm);
-      break;
-    }
-
-    /* Turn off alarm for a moment */
-    alarm_left = alarm(0);
-
-    /* Some signal interrupted, and it wasn't the alarm? Rerun lock */
-    if (lock_res == -1 && errno == EINTR && alarm_left) {
-      alarm(alarm_left);
-      continue;
-    }
-
-    /* Lock failed? */
-    _mmc_set_error(cache, errno, "Lock failed");
-    alarm(old_alarm);
-    return -1;
-  }
+  if (mmc_lock_page(cache, p_offset) == -1) return -1;
 
   if (!(P_Magic(p_ptr) == 0x92f7e3b1))
     return -1 + _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %u", p_cur, p_offset);
@@ -512,7 +300,6 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
  *
 */
 int mmc_unlock(mmap_cache * cache) {
-  struct flock lock;
 
   ASSERT(cache->p_cur != -1);
 
@@ -533,17 +320,7 @@ int mmc_unlock(mmap_cache * cache) {
   /* Test before unlocking */
   ASSERT(_mmc_test_page(cache));
 
-  /* Setup fcntl locking structure */
-  lock.l_type = F_UNLCK;
-  lock.l_whence = SEEK_SET;
-  lock.l_start = cache->p_offset;
-  lock.l_len = cache->c_page_size;
-
-  /* And unlock page */
-  fcntl(cache->fh, F_SETLKW, &lock);
-
-  /* Set to bad value while page not locked */
-  cache->p_cur = -1;
+  mmc_unlock_page(cache);
 
   return 0;
 }
@@ -1294,38 +1071,6 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
 }
 
 /*
- * int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...)
- *
- * Set internal error string/state
- *
-*/
-int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
-  va_list ap;
-  static char errbuf[1024];
-
-  va_start(ap, error_string);
-
-  /* Make sure it's terminated */
-  errbuf[1023] = '\0';
-
-  /* Start with error string passed */
-  vsnprintf(errbuf, 1023, error_string, ap);
-
-  /* Add system error code if passed */
-  if (err) {
-    strncat(errbuf, ": ", 1024);
-    strncat(errbuf, strerror(err), 1023);
-  }
-
-  /* Save in cache object */
-  cache->last_error = errbuf;
-
-  va_end(ap);
-
-  return 0;
-}
-
-/*
  * int _mmc_test_page(mmap_cache * cache)
  *
  * Test integrity of current page
@@ -1466,5 +1211,7 @@ int _mmc_dump_page(mmap_cache * cache) {
 
   return 0;
 }
+
+
 
 

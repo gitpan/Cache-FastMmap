@@ -164,8 +164,10 @@ comparisons to other modules.
 
 Cache::FastMmap uses mmap to map a file as the shared cache space,
 and fcntl to do page locking. This means it should work on most
-UNIX like operating systems, but will not work on Windows or
-Win32 like environments.
+UNIX like operating systems.
+
+Ash Berlin has written a Win32 layer using MapViewOfFile et al. to 
+provide support for Win32 platform.
 
 =head1 MEMORY SIZE
 
@@ -253,11 +255,13 @@ two main ways to do this:
 
 Create the cache in the parent process, and then when it forks, each
 child will inherit the same file descriptor, mmap'ed memory, etc and
-just work.
+just work. (BEWARE: This works just under UNIX as Win32 has no 
+concept of forking)
 
 =item *
 
-Explicitly connect up in each forked child to the share file
+Explicitly connect up in each forked child to the share file. (This is
+the only possible way under Win32)
 
 =back
 
@@ -283,7 +287,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.28';
+our $VERSION = '1.29';
 
 use Cache::FastMmap::CImpl;
 
@@ -300,8 +304,9 @@ Basic global parameters are:
 
 =item * B<share_file>
 
-File to mmap for sharing of data (default on unix: /tmp/sharefile-$pid-$time,
-default on windows: c:\sharefile-$pid-$time)
+File to mmap for sharing of data.
+default on unix: /tmp/sharefile-$pid-$time-$random
+default on windows: %TEMP%\sharefile-$pid-$time-$random
 
 =item * B<init_file>
 
@@ -488,8 +493,9 @@ sub new {
   my $share_file = $Args{share_file};
   if (!$share_file) {
     my $tmp_dir = $ENV{TMPDIR} || "/tmp";
-    $share_file = ($^O eq "MSWin32" ? "c:\\sharefile" : "$tmp_dir/sharefile");
-    $share_file .= "-" . $$ . "-" . time;
+    my $win_tmp_dir = $ENV{TEMP} || "c:\\";
+    $share_file = ($^O eq "MSWin32" ? "$win_tmp_dir\\sharefile" : "$tmp_dir/sharefile");
+    $share_file .= "-" . $$ . "-" . time . "-" . int(rand(100000));
   }
   !ref($share_file) || die "share_file argument was a reference";
   $Self->{share_file} = $share_file;
@@ -1167,6 +1173,15 @@ won't be.
 
 Otherwise the defaults seem sensible to cleanup unneeded share files rather than
 leaving them around to accumulate.
+
+=item After 1.28
+
+=over 4
+
+=item *
+
+Default share_file name is no longer /tmp/sharefile-$pid-$time 
+but /tmp/sharefile-$pid-$time-$random.
 
 =back
 

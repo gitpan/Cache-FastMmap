@@ -13,7 +13,7 @@ use strict;
 my $FC = Cache::FastMmap->new(init_file => 1, expire_time => 3, raw_values => 1);
 ok( defined $FC );
 my $FC2 = Cache::FastMmap->new(init_file => 1, expire_time => 5, raw_values => 1);
-ok( defined $FC );
+ok( defined $FC2 );
 
 
 ok( $FC->set('abc', '123'),    "expire set 1");
