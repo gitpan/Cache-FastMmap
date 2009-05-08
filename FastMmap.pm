@@ -287,7 +287,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.29';
+our $VERSION = '1.30';
 
 use Cache::FastMmap::CImpl;
 

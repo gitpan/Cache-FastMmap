@@ -57,7 +57,7 @@ fc_set_param(obj, param, val)
     RETVAL = mmc_set_param(cache, param, val);
   POSTCALL:
     if (RETVAL != 0) {
-      croak(mmc_error(cache));
+      croak("%s", mmc_error(cache));
     }
 
 NO_OUTPUT int
@@ -84,7 +84,7 @@ fc_init(obj)
     RETVAL = mmc_init(cache);
   POSTCALL:
     if (RETVAL != 0) {
-      croak(mmc_error(cache));
+      croak("%s", mmc_error(cache));
     }
 
 
@@ -178,7 +178,7 @@ fc_lock(obj, page);
     RETVAL = mmc_lock(cache, (MU32)page);
   POSTCALL:
     if (RETVAL != 0) {
-      croak(mmc_error(cache));
+      croak("%s", mmc_error(cache));
     }
 
 
@@ -207,7 +207,7 @@ fc_unlock(obj);
     RETVAL = mmc_unlock(cache);
   POSTCALL:
     if (RETVAL != 0) {
-      croak(mmc_error(cache));
+      croak("%s", mmc_error(cache));
     }
 
 

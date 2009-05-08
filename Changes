@@ -1,5 +1,8 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.30 Fri May 8  11:10 2009
+  - Fix for Mandriva compiler (thanks Jean-Christian Hassler)
+
 1.29 Fri May 1  17:20 2009
   - Support for Windows (thanks to Ash & kmx.at.volny.cz)
     (https://rt.cpan.org/Public/Bug/Display.html?id=45210)
