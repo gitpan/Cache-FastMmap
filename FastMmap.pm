@@ -287,7 +287,11 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.30';
+our $VERSION = '1.33';
+
+# Track currently live caches so we can cleanup in END {}
+#  if we have empty_on_exit set
+our %LiveCaches;
 
 use Cache::FastMmap::CImpl;
 
@@ -527,6 +531,15 @@ sub new {
       || die "Could not load Compress::Zlib module: $@";
   }
 
+  # If using empty_on_exit, need to track used caches
+  my $empty_on_exit = $Self->{empty_on_exit} = int($Args{empty_on_exit} || 0);
+  
+  # Need Scalar::Util::weaken to track open caches
+  if ($empty_on_exit) {
+    eval "use Scalar::Util qw(weaken); 1;"
+      || die "Could not load Scalar::Util module: $@";
+  }
+
   # Work out expiry time in seconds
   my $expire_time = $Self->{expire_time} = parse_expire_time($Args{expire_time});
 
@@ -585,8 +598,8 @@ sub new {
     = @Args{qw(context read_cb write_cb delete_cb)};
   @$Self{qw(cache_not_found allow_recursive write_back)}
     = (@Args{qw(cache_not_found allow_recursive)}, $write_back);
-  @$Self{qw(empty_on_exit unlink_on_exit enable_stats)}
-    = (@Args{qw(empty_on_exit unlink_on_exit)}, $enable_stats);
+  @$Self{qw(unlink_on_exit enable_stats)}
+    = (@Args{qw(unlink_on_exit)}, $enable_stats);
 
   # Save pid
   $Self->{pid} = $$;
@@ -614,6 +627,10 @@ sub new {
 
   # And initialise it
   $Cache->fc_init();
+
+  # Track cache if need to empty on exit
+  weaken($LiveCaches{ref($Self)} = $Self)
+    if $empty_on_exit;
 
   # All done, return PERL hash ref as class
   return $Self;
@@ -900,16 +917,23 @@ sub get_keys {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   my $Mode = $_[1] || 0;
+  my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
+
   return $Cache->fc_get_keys($Mode)
-    if $Mode <= 1 || ($Mode == 2 && $Self->{raw_values} && !$Self->{compress});
+    if $Mode <= 1 || ($Mode == 2 && $RawValues && !$Compress);
 
   # If we're getting values as well, and they're not raw, unfreeze them
   my @Details = $Cache->fc_get_keys(2);
+
   for (@Details) {
-    if (defined(my $Value = $_->{value})) {
-      $Value = Compress::Zlib::memGunzip($Value) if $Self->{compress};
-      $Value = ${thaw($Value)} if !$Self->{raw_values};
-      $_->{value} = $Value;
+    my $Val = $_->{value};
+    if (defined $Val) {
+      $Val = Compress::Zlib::memGunzip($Val) if $Compress;
+      if (!$RawValues) {
+        $Val = eval { thaw($Val) };
+        $Val = $$Val if ref($Val);
+      }
+      $_->{value} = $Val;
     }
   }
   return @Details;
@@ -1104,9 +1128,20 @@ sub _expunge_page {
 
   my @WBItems = $Cache->fc_expunge($Mode, $write_cb ? 1 : 0, $Len);
 
+  my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
+
   for (@WBItems) {
     next if !($_->{flags} & FC_ISDIRTY);
-    eval { $write_cb->($Self->{context}, $_->{key}, $_->{value}, $_->{expire_time}); };
+
+    my $Val = $_->{value};
+    if (defined $Val) {
+      $Val = Compress::Zlib::memGunzip($Val) if $Compress;
+      if (!$RawValues) {
+        $Val = eval { thaw($Val) };
+        $Val = $$Val if ref($Val);
+      }
+    }
+    eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_time}); };
   }
 }
 
@@ -1118,8 +1153,12 @@ sub parse_expire_time {
   return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{$2} : 0;
 }
 
-sub DESTROY {
+sub cleanup {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Avoid potential double cleanup
+  return if $Self->{cleaned};
+  $Self->{cleaned} = 1;
 
   # Expunge all entries on exit if requested and in parent process
   if ($Self->{empty_on_exit} && $Cache && $Self->{pid} == $$) {
@@ -1134,6 +1173,21 @@ sub DESTROY {
 
   unlink($Self->{share_file})
     if $Self->{unlink_on_exit} && $Self->{pid} == $$;
+
+}
+
+sub DESTROY {
+  my $Self = shift;
+  $Self->cleanup();
+  delete $LiveCaches{ref($Self)} if $Self->{empty_on_exit};
+}
+
+sub END {
+  while (my (undef, $Self) = each %LiveCaches) {
+    # Weak reference, might be undef already
+    $Self->cleanup() if $Self;
+  }
+  %LiveCaches = ();
 }
 
 sub CLONE {
@@ -1174,7 +1228,7 @@ won't be.
 Otherwise the defaults seem sensible to cleanup unneeded share files rather than
 leaving them around to accumulate.
 
-=item After 1.28
+=item From 1.29
 
 =over 4
 
@@ -1182,6 +1236,19 @@ leaving them around to accumulate.
 
 Default share_file name is no longer /tmp/sharefile-$pid-$time 
 but /tmp/sharefile-$pid-$time-$random.
+
+=back
+
+=item From 1.31
+
+=over 4
+
+=item *
+
+Before 1.31, if you were using raw_values => 0 mode, then the write_cb
+would be called with raw frozen data, rather than the thawed object.
+From 1.31 onwards, it correctly calls write_cb with the thawed object
+value (eg what was passed to the ->set() call in the first place)
 
 =back
 

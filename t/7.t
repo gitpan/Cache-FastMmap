@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 11;
+use Test::More tests => 13;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -27,7 +27,8 @@ my $FC = Cache::FastMmap->new(
   read_cb => sub { return $_[0]->{$_[1]}; },
   write_cb => sub { $_[0]->{$_[1]} = $_[2]; },
   delete_cb => sub { delete $_[0]->{$_[1]} },
-  write_action => 'write_back'
+  write_action => 'write_back',
+  empty_on_exit => 1
 );
 
 ok( defined $FC );
@@ -91,6 +92,23 @@ $FC->empty();
 
 # So all written items should be in backing store
 ok( eq_hash(\%WrittenItems, \%BackingStore), "items match 3");
+
+my @Keys = $FC->get_keys(0);
+ok( scalar(@Keys) == 0, "no items left in cache" );
+
+%WrittenItems = %BackingStore = ();
+
+# Put 3000 items in the cache
+for (1 .. 3000) {
+  my ($Key, $Val) = (RandStr(10), RandStr(100));
+  $FC->set($Key, $Val);
+  $WrittenItems{$Key} = $Val;
+}
+
+# empty_on_exit is set, so this should push to backing store
+$FC = undef;
+
+ok( eq_hash(\%WrittenItems, \%BackingStore), "items match 4");
 
 sub RandStr {
   return join '', map { chr(ord('a') + rand(26)) } (1 .. $_[0]);

@@ -2,14 +2,14 @@
 Cache-FastMmap-CImpl/CImpl.pm
 Cache-FastMmap-CImpl/CImpl.xs
 Cache-FastMmap-CImpl/Makefile.PL
-Cache-FastMmap-CImpl/unix.c
-Cache-FastMmap-CImpl/win32.c
 Cache-FastMmap-CImpl/mmap_cache.c
 Cache-FastMmap-CImpl/mmap_cache.h
 Cache-FastMmap-CImpl/mmap_cache_internals.h
 Cache-FastMmap-CImpl/mmap_cache_test.c
 Cache-FastMmap-CImpl/ppport.h
 Cache-FastMmap-CImpl/README
+Cache-FastMmap-CImpl/unix.c
+Cache-FastMmap-CImpl/win32.c
 Changes
 FastMmap.pm
 Makefile.PL
@@ -22,6 +22,7 @@ t/11.t
 t/12.t
 t/13.t
 t/14.t
+t/15.t
 t/2.t
 t/3.t
 t/4.t

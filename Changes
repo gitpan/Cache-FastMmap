@@ -1,5 +1,19 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.33 Thu Jun 18 12:00 2009
+  - Update version in META.yml
+
+1.32 Thu Jun 18 11:55 2009
+  - Better LiveCaches tracking via DESTROY
+
+1.31 Thu Jun 18 11:40 2009
+  - when in raw_values => 0 mode, the write_cb is now
+    correctly called with thawed data, rather than the
+    raw frozen data
+  - empty_on_exit correctly called even when a global
+    cache is left at interpreter exit time (required
+    Scalar::Util qw(weaken) for object tracking)
+
 1.30 Fri May 8  11:10 2009
   - Fix for Mandriva compiler (thanks Jean-Christian Hassler)
 
