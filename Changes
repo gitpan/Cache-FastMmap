@@ -1,5 +1,8 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.34 Fri Jun 19 12:00 2009
+  - perldoc fix (thanks Jonathan Yu)
+
 1.33 Thu Jun 18 12:00 2009
   - Update version in META.yml
 
