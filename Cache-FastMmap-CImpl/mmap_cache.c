@@ -986,6 +986,7 @@ MU32 * _mmc_find_slot(
   MU32 slots_left, * slots_end;
   /* Modulo hash_slot to find starting slot */
   MU32 * slot_ptr = cache->p_base_slots + (hash_slot % cache->p_num_slots);
+  MU32 * first_deleted = (MU32 *)0;
 
   /* Total slots and pointer to end of slot data to do wrapping */
   slots_left = cache->p_num_slots;
@@ -1003,12 +1004,16 @@ MU32 * _mmc_find_slot(
 
     /* data_offset == 0 means empty slot, and no more beyond */
     /* data_offset == 1 means deleted slot, we can reuse if writing */
-    if (data_offset == 0 || (data_offset == 1 && mode == 1)) {
-
+    if (data_offset == 0) {
       /* Return pointer to last checked slot */
       return slot_ptr;
     }
-
+    if (data_offset == 1 && mode == 1 && 0 == slot_ptr) {
+      /* Save pointer to first usable slot; if we don't find the key later,
+         we'll fall back to returning this.
+      */
+      first_deleted = slot_ptr;
+    }
     /* deleted slot, keep looking */
     if (data_offset == 1) {
 
@@ -1032,7 +1037,10 @@ MU32 * _mmc_find_slot(
     ASSERT(slot_ptr >= cache->p_base_slots && slot_ptr < slots_end);
   }
 
-  return 0;
+  if (1 == mode && 0 != first_deleted)
+    return first_deleted;
+  else
+    return 0;
 }
 
 /*

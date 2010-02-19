@@ -15,7 +15,7 @@ use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '1.34';
+our $VERSION = '1.35';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap::CImpl', $VERSION);
@@ -38,7 +38,7 @@ Rob Mueller E<lt>cpan@robm.fastmail.fmE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003 by FastMail IP Partners
+Copyright (C) 2003-2010 by The FastMail Partnership
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

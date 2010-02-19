@@ -287,7 +287,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.34';
+our $VERSION = '1.35';
 
 # Track currently live caches so we can cleanup in END {}
 #  if we have empty_on_exit set
@@ -1271,7 +1271,7 @@ Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2008 by FastMail IP Partners
+Copyright (C) 2003-2010 by The FastMail Partnership
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
