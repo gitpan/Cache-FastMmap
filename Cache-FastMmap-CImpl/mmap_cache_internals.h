@@ -42,6 +42,7 @@ struct mmap_cache {
   /* Cache general details */
   MU32    start_slots;
   MU32    expire_time;
+  int     catch_deadlocks;
   int     enable_stats;
 
   /* Share mmap file details */

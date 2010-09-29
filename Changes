@@ -1,5 +1,11 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.36 Wed Sep 29 13:10 2010
+  - Disable wrapping fcntl() lock call in alarm, hurts
+     people that use Time::HiRes::alarm() only to try
+     and catch buggy deadlock code. Enable with
+     catch_deadlocks option
+
 1.35 Fri Feb 19 12:45 2010
   - Fix for returning potential bug that returns old stored
      data. Could occur if you mix deletes

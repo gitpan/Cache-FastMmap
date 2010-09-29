@@ -25,6 +25,8 @@ my $GTop = GTop->new;
 our ($DidRead, $DidWrite, $DidDelete, $HitCount);
 
 our $FC;
+$FC = Cache::FastMmap->new(init_file => 0, raw_values => 1);
+$FC = undef;
 
 TestLeak(\&NewLeak);
 TestLeak(\&NewLeak);

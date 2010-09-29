@@ -27,16 +27,16 @@ for (1 .. 100) {
 
 my ($nreads, $nreadhits) = $FC->get_statistics();
 
-ok( $nreads == 102 );
-ok( $nreadhits == 101 );
+cmp_ok( $nreads, '==', 102 );
+cmp_ok( $nreadhits, '==', 101 );
 
 ($nreads, $nreadhits) = $FC->get_statistics(1);
 
-ok( $nreads == 102 );
-ok( $nreadhits == 101 );
+cmp_ok( $nreads, '==', 102 );
+cmp_ok( $nreadhits, '==', 101 );
 
 ($nreads, $nreadhits) = $FC->get_statistics(1);
 
-ok( $nreads == 0 );
-ok( $nreadhits == 0 );
+cmp_ok( $nreads, '==', 0 );
+cmp_ok( $nreadhits, '==', 0 );
 

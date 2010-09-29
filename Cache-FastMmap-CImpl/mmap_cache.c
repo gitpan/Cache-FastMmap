@@ -57,6 +57,7 @@ mmap_cache * mmc_new() {
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
 
+  cache->catch_deadlocks = 0;
   cache->enable_stats = 0;
 
   cache->last_error = 0;
@@ -79,6 +80,8 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
     cache->share_file = val;
   } else if (!strcmp(param, "start_slots")) {
     cache->start_slots = atoi(val);
+  } else if (!strcmp(param, "catch_deadlocks")) {
+    cache->catch_deadlocks = atoi(val);
   } else if (!strcmp(param, "enable_stats")) {
     cache->enable_stats = atoi(val);
   } else {

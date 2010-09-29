@@ -147,7 +147,8 @@ int mmc_lock_page(mmap_cache* cache, MU32 p_offset) {
   lock.l_start = p_offset;
   lock.l_len = cache->c_page_size;
 
-  old_alarm = alarm(alarm_left);
+  if (cache->catch_deadlocks)
+    old_alarm = alarm(alarm_left);
 
   while (lock_res != 0) {
 
@@ -156,22 +157,26 @@ int mmc_lock_page(mmap_cache* cache, MU32 p_offset) {
 
     /* Continue immediately if success */
     if (lock_res == 0) {
-      alarm(old_alarm);
+      if (cache->catch_deadlocks)
+        alarm(old_alarm);
       break;
     }
 
     /* Turn off alarm for a moment */
-    alarm_left = alarm(0);
+    if (cache->catch_deadlocks)
+      alarm_left = alarm(0);
 
     /* Some signal interrupted, and it wasn't the alarm? Rerun lock */
     if (lock_res == -1 && errno == EINTR && alarm_left) {
-      alarm(alarm_left);
+      if (cache->catch_deadlocks)
+        alarm(alarm_left);
       continue;
     }
 
     /* Lock failed? */
     _mmc_set_error(cache, errno, "Lock failed");
-    alarm(old_alarm);
+    if (cache->catch_deadlocks)
+      alarm(old_alarm);
     return -1;
   }
 

@@ -287,7 +287,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.35';
+our $VERSION = '1.36';
 
 # Track currently live caches so we can cleanup in END {}
 #  if we have empty_on_exit set
@@ -480,6 +480,13 @@ This value defaults to 1 if the share_file specified does
 not already exist. If the share_file specified does already
 exist, it defaults to 0.
 
+=item * B<catch_deadlocks>
+
+Sets an alarm(10) before each page is locked via fcntl(F_SETLKW) to catch
+any deadlock. This used to be the default behaviour, but it's not really
+needed in the default case and could clobber sub-second Time::HiRes
+alarms setup by other code. Defaults to 0.
+
 =back
 
 =cut
@@ -507,6 +514,7 @@ sub new {
   my $init_file = $Args{init_file} ? 1 : 0;
   my $test_file = $Args{test_file} ? 1 : 0;
   my $enable_stats = $Args{enable_stats} ? 1 : 0;
+  my $catch_deadlocks = $Args{catch_deadlocks} ? 1 : 0;
 
   # Worth out unlink default if not specified
   if (!exists $Args{unlink_on_exit}) {
@@ -623,6 +631,7 @@ sub new {
   $Cache->fc_set_param('expire_time', $expire_time);
   $Cache->fc_set_param('share_file', $share_file);
   $Cache->fc_set_param('start_slots', $start_slots);
+  $Cache->fc_set_param('catch_deadlocks', $catch_deadlocks);
   $Cache->fc_set_param('enable_stats', $enable_stats);
 
   # And initialise it
@@ -1249,6 +1258,27 @@ Before 1.31, if you were using raw_values => 0 mode, then the write_cb
 would be called with raw frozen data, rather than the thawed object.
 From 1.31 onwards, it correctly calls write_cb with the thawed object
 value (eg what was passed to the ->set() call in the first place)
+
+=back
+
+=item * From 1.36
+
+=over 4
+
+=item *
+
+Before 1.36, an alarm(10) would be set before each attempt to lock
+a page. The only purpose of this was to detect deadlocks, which
+should only happen if the Cache::FastMmap code was buggy, or a
+callback function in get_and_set() made another call into
+Cache::FastMmap.
+
+However this added unnecessary extra system calls for every lookup,
+and for users using Time::HiRes, it could clobber any existing
+alarms that had been set with sub-second resolution.
+
+So this has now been made an optional feature via the catch_deadlocks
+option passed to new.
 
 =back
 
