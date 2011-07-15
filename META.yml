@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Cache-FastMmap
-version:             1.36
+version:             1.37
 abstract:            Uses an mmap'ed file to act as a shared memory interprocess cache
 license:             ~
 author:              

@@ -160,7 +160,7 @@ Cache::FastMmap has noticeable performance improvements.
 See L<http://cpan.robm.fastmail.fm/cache_perf.html> for some
 comparisons to other modules.
 
-=head1 COMPATIABILITY
+=head1 COMPATIBILITY
 
 Cache::FastMmap uses mmap to map a file as the shared cache space,
 and fcntl to do page locking. This means it should work on most
@@ -255,13 +255,19 @@ two main ways to do this:
 
 Create the cache in the parent process, and then when it forks, each
 child will inherit the same file descriptor, mmap'ed memory, etc and
-just work. (BEWARE: This works just under UNIX as Win32 has no 
-concept of forking)
+just work. This is the recommended way. (BEWARE: This only works under
+UNIX as Win32 has no concept of forking)
 
 =item *
 
-Explicitly connect up in each forked child to the share file. (This is
-the only possible way under Win32)
+Explicitly connect up in each forked child to the share file. In this
+case, make sure the file already exists and the children connect with
+init_file => 0 to avoid deleting the cache contents and possible
+race corruption conditions. Also be careful that multiple children
+may race to create the file at the same time, each overwriting and
+corrupting content. Use a separate lock file if you must to ensure
+only one child creates the file. (This is the only possible way under
+Win32)
 
 =back
 
@@ -287,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.36';
+our $VERSION = '1.37';
 
 # Track currently live caches so we can cleanup in END {}
 #  if we have empty_on_exit set
@@ -559,7 +565,7 @@ sub new {
 
   my %Sizes = (k => 1024, m => 1024*1024);
   if ($cache_size = $Args{cache_size}) {
-    $cache_size *= $Sizes{$1} if $cache_size =~ s/([km])$//i;
+    $cache_size *= $Sizes{lc($1)} if $cache_size =~ s/([km])$//i;
 
     if ($num_pages = $Args{num_pages}) {
       $page_size = RoundPow2($cache_size / $num_pages);
@@ -567,7 +573,7 @@ sub new {
 
     } else {
       $page_size = $Args{page_size} || 65536;
-      $page_size *= $Sizes{$1} if $page_size =~ s/([km])$//i;
+      $page_size *= $Sizes{lc($1)} if $page_size =~ s/([km])$//i;
       $page_size = 4096 if $page_size < 4096;
 
       # Increase num_pages till we exceed 
@@ -589,7 +595,7 @@ sub new {
     ($num_pages, $page_size) = @Args{qw(num_pages page_size)};
     $num_pages ||= 89;
     $page_size ||= 65536;
-    $page_size *= $Sizes{$1} if $page_size =~ s/([km])$//i;
+    $page_size *= $Sizes{lc($1)} if $page_size =~ s/([km])$//i;
     $page_size = RoundPow2($page_size);
   }
 
@@ -662,7 +668,7 @@ sub get {
 
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+  my $Unlock = $Self->_lock_page($HashPage);
   my ($Val, $Flags, $Found) = $Cache->fc_read($HashSlot, $_[1]);
 
   # Value not found, check underlying data store
@@ -670,10 +676,10 @@ sub get {
 
     # Callback to read from underlying data store
     # (unlock page first if we allow recursive calls
-    $Cache->fc_unlock() if $Self->{allow_recursive};
+    $Unlock = undef if $Self->{allow_recursive};
     $Val = eval { $read_cb->($Self->{context}, $_[1]); };
     my $Err = $@;
-    $Cache->fc_lock($HashPage) if $Self->{allow_recursive};
+    $Unlock = $Self->_lock_page($HashPage) if $Self->{allow_recursive};
 
     # Pass on any error
     if ($Err) {
@@ -702,11 +708,15 @@ sub get {
 
   # Unlock page and return any found value
   # Unlock is done only if we're not in the middle of a get_set() operation.
-  $Cache->fc_unlock() unless $_[2] && $_[2]->{skip_unlock};
+  my $SkipUnlock = $_[2] && $_[2]->{skip_unlock};
+  $Unlock = undef unless $SkipUnlock;
 
   # If not using raw values, use thaw() to turn data back into object
   $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
   $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
+
+  # If explicitly asked to skip unlocking, we return the reference to the unlocker
+  return ($Val, $Unlock) if $SkipUnlock;
 
   return $Val;
 }
@@ -731,13 +741,22 @@ sub set {
   my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
   $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
 
-  # Get opts, make compatiable with Cache::Cache interface
+  # Get opts, make compatible with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
   my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
 
   # Hash value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage) unless $Opts && $Opts->{skip_lock};
+
+  # If skip_lock is passed, it's a *reference* to an existing lock we
+  #  have to take and delete so we can cleanup below before calling
+  #  the callback
+  my $Unlock = $Opts && $Opts->{skip_lock};
+  if ($Unlock) {
+    ($Unlock, $$Unlock) = ($$Unlock, undef);
+  } else {
+    $Unlock = $Self->_lock_page($HashPage);
+  }
 
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
@@ -751,7 +770,7 @@ sub set {
   my $DidStore = $Cache->fc_write($HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
-  $Cache->fc_unlock();
+  $Unlock = undef;
 
   # If we're doing write-through, or write-back and didn't get into cache,
   #  write back to the underlying store
@@ -799,8 +818,8 @@ operations lock the page and you may end up with a dead lock!
 
 =item *
 
-If your sub does a die/throws an exception, this will be caught
-to allow the page to be unlocked, and then rethrown (1.15 onwards)
+If your sub does a die/throws an exception, the page will correctly
+be unlocked (1.15 onwards)
 
 =back
 
@@ -808,11 +827,10 @@ to allow the page to be unlocked, and then rethrown (1.15 onwards)
 sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my $Value = $Self->get($_[1], { skip_unlock => 1 });
-  eval { $Value = $_[2]->($_[1], $Value); };
-  my $Err = $@;
-  my $DidStore = $Self->set($_[1], $Value, { skip_lock => 1 });
-  die $Err if $Err;
+  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+  # If this throws an error, $Unlock ref will still unlock page
+  $Value = $_[2]->($_[1], $Value);
+  my $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
 
   return wantarray ? ($Value, $DidStore) : $Value;
 }
@@ -832,11 +850,18 @@ sub remove {
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
 
-  # Lock is done only if we're not in the middle of a get_and_remove() operation.
-  $Cache->fc_lock($HashPage) unless $_[2] && $_[2]->{skip_lock};
+  # If skip_lock is passed, it's a *reference* to an existing lock we
+  #  have to take and delete so we can cleanup below before calling
+  #  the callback
+  my $Unlock = $_[2] && $_[2]->{skip_lock};
+  if ($Unlock) {
+    ($Unlock, $$Unlock) = ($$Unlock, undef);
+  } else {
+    $Unlock = $Self->_lock_page($HashPage);
+  }
 
   my ($DidDel, $Flags) = $Cache->fc_delete($HashSlot, $_[1]);
-  $Cache->fc_unlock();
+  $Unlock = undef;
 
   # If we deleted from the cache, and it's not dirty, also delete
   #  from underlying store
@@ -860,8 +885,8 @@ isn't removed by us.
 sub get_and_remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my $Value = $Self->get($_[1], { skip_unlock => 1 });
-  my $DidDel = $Self->remove($_[1], { skip_lock => 1 });
+  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+  my $DidDel = $Self->remove($_[1], { skip_lock => \$Unlock });
   return wantarray ? ($Value, $DidDel) : $Value;
 }
 
@@ -1006,7 +1031,7 @@ A couple of things to note:
 =item 1.
 
 This makes multi_get()/multi_set() and get()/set()
-incompatiable. Don't mix calls to the two, because
+incompatible. Don't mix calls to the two, because
 you won't find the data you're expecting
 
 =item 2.
@@ -1057,7 +1082,7 @@ Store specified key/value pair into cache
 sub multi_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  # Get opts, make compatiable with Cache::Cache interface
+  # Get opts, make compatible with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
   my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
 
@@ -1154,12 +1179,27 @@ sub _expunge_page {
   }
 }
 
+=item I<_lock_page($Page)>
+
+Lock a given page in the cache, and return an object
+reference that when DESTROYed, unlocks the page
+
+=cut
+sub _lock_page {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+  my $Unlock = Cache::FastMmap::OnLeave->new(sub {
+    $Cache->fc_unlock() if $Cache->fc_is_locked();
+  });
+  $Cache->fc_lock(shift);
+  return $Unlock;
+}
+
 sub parse_expire_time {
   my $expire_time = shift || '';
   return 1 if $expire_time eq 'now';
   return 0 if $expire_time eq 'never';
   my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);
-  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{$2} : 0;
+  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{lc($2)} : 0;
 }
 
 sub cleanup {
@@ -1209,7 +1249,9 @@ __END__
 
 =back
 
-=head1 INCOMPATIABLE CHANGES
+=cut
+
+=head1 INCOMPATIBLE CHANGES
 
 =over 4
 
@@ -1236,6 +1278,8 @@ won't be.
 
 Otherwise the defaults seem sensible to cleanup unneeded share files rather than
 leaving them around to accumulate.
+
+=back
 
 =item * From 1.29
 
@@ -1284,7 +1328,7 @@ option passed to new.
 
 =back
 
-=back
+=cut
 
 =head1 SEE ALSO
 
@@ -1295,13 +1339,21 @@ Latest news/details can also be found at:
 
 L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
+Available on github at:
+
+L<https://github.com/robmueller/cache-fastmmap/>
+
+=cut
+
 =head1 AUTHOR
 
 Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
+=cut
+
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2010 by The FastMail Partnership
+Copyright (C) 2003-2011 by Opera Software Australia Pty Ltd
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

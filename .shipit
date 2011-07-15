@@ -1,9 +1,0 @@
-# auto-generated shipit config file.
-steps = FindVersion, ChangeVersion, CheckChangeLog, DistTest, Commit, Tag, MakeDist, PutInVFS
-
-PutInVFS.dir = ~/cpan/cachefastmmap/
-
-svn.tagpattern = CacheFastMmap-%v
-# svn.tagpattern = http://code.example.com/svn/tags/MyProj-%v
-
-# CheckChangeLog.files = ChangeLog, MyProj.CHANGES
